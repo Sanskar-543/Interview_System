@@ -1,0 +1,40 @@
+{
+  "name": "ai-interviewer-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Mock Interviewer Platform Monorepo",
+  "scripts": {
+    "test:integration": "tsx --test tests/integration/session.test.ts",
+    "test:integration:save": "tsx --test tests/integration/session.test.ts > test_results_ansi.txt",
+    "inspect": "tsx tests/integration/inspectTable.ts",
+    "test:unit": "tsx --test tests/unit/**/*.test.ts"
+  },
+  "dependencies": {
+    "@ai-interviewer/db": "file:packages/db",
+    "@ai-interviewer/queue": "file:packages/queue",
+    "@ai-interviewer/rag": "file:packages/rag",
+    "@ai-interviewer/shared": "file:packages/shared",
+    "@neondatabase/serverless": "^0.9.3",
+    "bcryptjs": "^2.4.3",
+    "drizzle-orm": "^0.30.10",
+    "express": "^4.19.2",
+    "http-proxy": "^1.18.1",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.5",
+    "pino": "^9.1.0",
+    "pino-pretty": "^11.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^4.17.21",
+    "@types/http-proxy": "^1.17.14",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.12.12",
+    "@types/pg": "^8.11.6",
+    "drizzle-kit": "^0.21.4",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.5"
+  }
+}

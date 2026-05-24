@@ -1,0 +1,27 @@
+{
+  "name": "@ai-interviewer/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./server.ts",
+  "scripts": {
+    "test:integration": "tsx --test ../../tests/integration/session.test.ts"
+  },
+  "dependencies": {
+    "@ai-interviewer/db": "file:../../packages/db",
+    "@ai-interviewer/shared": "file:../../packages/shared",
+    "bcryptjs": "^2.4.3",
+    "drizzle-orm": "^0.45.2",
+    "express": "^4.19.2",
+    "http-proxy": "^1.18.1",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^4.17.21",
+    "@types/http-proxy": "^1.17.14",
+    "@types/jsonwebtoken": "^9.0.6",
+    "typescript": "^5.4.5",
+    "tsx": "^4.11.0"
+  }
+}

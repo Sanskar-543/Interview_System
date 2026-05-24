@@ -1,0 +1,17 @@
+{
+  "name": "@ai-interviewer/worker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./index.ts",
+  "dependencies": {
+    "@ai-interviewer/db": "file:../../packages/db",
+    "@ai-interviewer/queue": "file:../../packages/queue",
+    "@ai-interviewer/shared": "file:../../packages/shared",
+    "bullmq": "^5.8.3",
+    "drizzle-orm": "^0.30.10",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@ai-interviewer/queue",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./jobs.ts",
+  "types": "./jobs.ts",
+  "dependencies": {
+    "@ai-interviewer/shared": "file:../shared",
+    "bullmq": "^5.8.3",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
