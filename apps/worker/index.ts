@@ -3,6 +3,7 @@ import IORedis from 'ioredis';
 import { env, logger } from '@ai-interviewer/shared';
 import { processEvaluationJob } from './jobs/eval';
 import { processNotificationJob } from './jobs/notification';
+import { processCreditRefundJob } from './jobs/billing';
 
 // Connection mapping IORedis with maxRetriesPerRequest: null as required by BullMQ workers
 const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
@@ -15,8 +16,7 @@ const evalWorker = new Worker('eval-queue', async (job) => {
 
 const billingWorker = new Worker('billing-queue', async (job) => {
   if (job.name === 'credit-refund') {
-    logger.warn({ jobData: job.data }, 'Worker: Triggered automated credit refund process for candidate.');
-    await processNotificationJob({ ...job.data, reason: 'credit-refund' });
+    await processCreditRefundJob(job.data);
   }
 }, { connection });
 

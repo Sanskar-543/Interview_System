@@ -5,6 +5,9 @@
   "description": "AI Mock Interviewer Platform Monorepo",
   "scripts": {
     "test:integration": "tsx --test tests/integration/session.test.ts",
+    "test:billing": "tsx --test tests/integration/billing.test.ts",
+    "test:rag": "tsx --test tests/integration/rag.test.ts",
+    "test:all-integration": "tsx --test tests/integration/**/*.test.ts",
     "test:integration:save": "tsx --test tests/integration/session.test.ts > test_results_ansi.txt",
     "inspect": "tsx tests/integration/inspectTable.ts",
     "test:unit": "tsx --test tests/unit/**/*.test.ts"

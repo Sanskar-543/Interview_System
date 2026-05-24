@@ -8,9 +8,13 @@ import { authRouter } from './routes/auth';
 import { sessionsRouter } from './routes/sessions';
 import { usersRouter } from './routes/users';
 import { reportsRouter } from './routes/reports';
+import { billingRouter, billingWebhookHandler } from './routes/billing';
 
 const app = express();
 const server = createServer(app);
+
+// MANDATORY CORRECTION 1: Razorpay webhook mounted BEFORE express.json() using raw body parser
+app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json' }), billingWebhookHandler);
 
 app.use(express.json());
 
@@ -46,6 +50,7 @@ app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/sessions', sessionsRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/reports', reportsRouter);
+app.use('/api/v1/billing', billingRouter);
 
 // Global error handler
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
