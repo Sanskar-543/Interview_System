@@ -1,4 +1,4 @@
-import { Router, Response, NextFunction } from 'express';
+import { Router, IRouter, Response, NextFunction } from 'express';
 import crypto from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { db, sessions, users, turns } from '@ai-interviewer/db';
@@ -123,4 +123,4 @@ router.post('/:id/end', async (req, res: Response, next: NextFunction) => {
   }
 });
 
-export const sessionsRouter = router;
+export const sessionsRouter: IRouter = router;

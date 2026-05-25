@@ -1,4 +1,4 @@
-import { Router, Response, NextFunction, Request } from 'express';
+import { Router, IRouter, Response, NextFunction, Request } from 'express';
 import crypto from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db, users } from '@ai-interviewer/db';
@@ -6,7 +6,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { AppError } from '../errors/AppError';
 import { env, logger } from '@ai-interviewer/shared';
 
-export const billingRouter = Router();
+export const billingRouter: IRouter = Router();
 
 // Gated routes for checkout and cancellation
 billingRouter.use(authenticateToken);

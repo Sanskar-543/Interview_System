@@ -1,4 +1,4 @@
-import { Router, Response, NextFunction } from 'express';
+import { Router, IRouter, Response, NextFunction } from 'express';
 import { eq } from 'drizzle-orm';
 import { db, users } from '@ai-interviewer/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
@@ -33,4 +33,4 @@ router.get('/me', async (req, res: Response, next: NextFunction) => {
   }
 });
 
-export const usersRouter = router;
+export const usersRouter: IRouter = router;

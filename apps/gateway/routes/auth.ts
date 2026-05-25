@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, IRouter, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
@@ -79,4 +79,4 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
-export const authRouter = router;
+export const authRouter: IRouter = router;
