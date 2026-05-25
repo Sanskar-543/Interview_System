@@ -43,4 +43,4 @@ jobs:
         working-directory: apps/voice-service
 
       - name: Run Unit Tests
-        run: pnpm exec tsx --test tests/unit/**/*.test.ts
+        run: pnpm exec vitest run --reporter=verbose
