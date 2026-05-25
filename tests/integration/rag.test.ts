@@ -1,6 +1,7 @@
 import './setupEnv';
 import test from 'node:test';
 import assert from 'node:assert';
+import { vi, beforeEach, afterEach } from 'vitest';
 import { getEmbedding } from '../../packages/rag/embed';
 import { searchKnowledge } from '../../packages/rag/search';
 import { processEvaluationJob } from '../../apps/worker/jobs/eval';
@@ -8,6 +9,19 @@ import { CircuitBreaker } from '../../apps/voice-service/circuit/breaker';
 import { db, sessions, turns, reports, users } from '../../packages/db';
 import { eq } from 'drizzle-orm';
 import crypto from 'node:crypto';
+
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      data: [{ embedding: new Array(1536).fill(0.1) }]
+    })
+  }));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 // In-Memory Drizzle/Database Mocks for Integration Testing
 const mockDbState = {
@@ -20,15 +34,11 @@ const mockDbState = {
 
 // Intercept DB query methods to simulate full Neon postgres layer during testing
 test('RAG & Worker Integration: getEmbedding throws AppError on failure', async () => {
-  // Global fetch mock to simulate OpenRouter API failure
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => {
-    return {
-      ok: false,
-      status: 500,
-      text: async () => 'Internal Server Error',
-    } as any;
-  };
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: false,
+    status: 500,
+    text: async () => 'Internal Server Error',
+  }));
 
   try {
     await getEmbedding('test text');
@@ -38,8 +48,6 @@ test('RAG & Worker Integration: getEmbedding throws AppError on failure', async 
     assert.equal(err.code, 'EMBEDDING_FAILED');
     assert.equal(err.message, 'Could not generate embedding');
     assert.equal(err.status, 500);
-  } finally {
-    globalThis.fetch = originalFetch;
   }
 });
 
