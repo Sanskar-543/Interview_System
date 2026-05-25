@@ -1,0 +1,77 @@
+# AI Interviewer SaaS — Required API Keys & Secrets
+
+This document contains a complete inventory of all the connection strings, API keys, and cryptographic secrets required to run and test the AI Mock Interviewer platform in a real-world production or staging environment.
+
+---
+
+## 1. Application Security
+
+These keys secure user communications, passwords, and sessions.
+
+| Environment Variable | Service / Purpose | Security Requirement | Where to Get It |
+|----------------------|-------------------|----------------------|-----------------|
+| **`JWT_SECRET`** | Signs and cryptographically validates JSON Web Tokens for candidate sessions and routes. | Secure, random 256-bit string (at least 32 characters long). | Generate via terminal:<br>`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+
+---
+
+## 2. Infrastructure & Databases
+
+Persistent storage and background job scheduling.
+
+| Environment Variable | Provider | Purpose | Format / Where to Get It |
+|----------------------|----------|---------|--------------------------|
+| **`DATABASE_URL`** | [Neon Postgres](https://neon.tech) | Connection string for candidate profiles, session records, turns transcripts, and evaluation reports. | `postgres://[user]:[password]@[host]/[dbname]?sslmode=require` from your Neon console. |
+| **`REDIS_URL`** | [Upstash Redis](https://upstash.com) | Turn history cache, Circuit Breaker states, and BullMQ worker queue management. | `redis://:[password]@[host]:[port]` from your Upstash database console. |
+
+---
+
+## 3. Real-Time Conversational Loop (AI APIs)
+
+Hot-path APIs responsible for real-time speech transcribing, follow-up generation, and audio synthesis.
+
+| Environment Variable | Provider | Purpose | Where to Get It |
+|----------------------|----------|---------|-----------------|
+| **`DEEPGRAM_API_KEY`** | [Deepgram](https://console.deepgram.com) | Transcribes real-time binary audio stream (candidate's voice) into text. | Sign up at Deepgram and create an API Key under your project console. |
+| **`OPENROUTER_API_KEY`** | [OpenRouter](https://openrouter.ai) | Streams conversational follow-ups (LLM) and computes nomic text RAG embeddings. | Create an account at OpenRouter, top-up standard balance (e.g. $10), and generate an API key. |
+| **`GOOGLE_TTS_API_KEY`** | [Google Cloud Console](https://console.cloud.google.com) | Synthesizes conversational follow-ups back into natural waveNet audio chunks. | Enable the Text-to-Speech API in your Google Cloud Project and generate a general Web API Key. |
+
+---
+
+## 4. SaaS Monetization (Razorpay)
+
+Handles subscriptions, candidate upgrades, and failed interview credit rollbacks.
+
+| Environment Variable | Provider | Purpose | Where to Get It |
+|----------------------|----------|---------|-----------------|
+| **`RAZORPAY_KEY_ID`** | [Razorpay](https://dashboard.razorpay.com) | Loaded on the client-side pricing portal to initialize the Razorpay checkout overlay. | Razorpay Dashboard → Settings → API Keys (Test/Live mode). |
+| **`RAZORPAY_KEY_SECRET`** | [Razorpay](https://dashboard.razorpay.com) | Loaded on the API gateway to initiate payment order payloads. | Generated alongside your `RAZORPAY_KEY_ID`. |
+| **`RAZORPAY_WEBHOOK_SECRET`** | [Razorpay](https://dashboard.razorpay.com) | Shared webhook signing key used by the gateway to verify postback payloads. | Razorpay Dashboard → Webhooks → Add Webhook URL (`/api/v1/billing/webhook`) and define a secret. |
+
+---
+
+## 🚀 Production `.env` Template
+
+Create a `.env` file in the root folder of your monorepo and populate these values before starting the services:
+
+```env
+# Node Environment
+NODE_ENV=production
+PORT=5000
+
+# Security (JWT Auth)
+JWT_SECRET=your_secure_32_character_jwt_secret_here
+
+# Persistent Storage
+DATABASE_URL=postgres://user:password@host.neon.tech/neondb?sslmode=require
+REDIS_URL=rediss://default:password@host.upstash.io:6379
+
+# Conversational AI (Deepgram, OpenRouter, Google Cloud)
+DEEPGRAM_API_KEY=dg_your_deepgram_api_key_here
+OPENROUTER_API_KEY=sk-or-v1-your_openrouter_api_key_here
+GOOGLE_TTS_API_KEY=AIzaSy_your_google_tts_api_key_here
+
+# Billing & Monetization (Razorpay)
+RAZORPAY_KEY_ID=rzp_live_your_key_id_here
+RAZORPAY_KEY_SECRET=your_razorpay_secret_here
+RAZORPAY_WEBHOOK_SECRET=your_razorpay_webhook_secret_here
+```

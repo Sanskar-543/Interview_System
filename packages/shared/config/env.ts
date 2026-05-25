@@ -7,8 +7,6 @@ export const env = createEnv({
     PORT: z.coerce.number().default(5000),
     DEEPGRAM_API_KEY: z.string().min(1),
     OPENROUTER_API_KEY: z.string().min(1),
-    GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
-    GOOGLE_TTS_API_KEY: z.string().optional(),
     REDIS_URL: z.string().url().default('redis://localhost:6379'),
     DATABASE_URL: z.string().url().min(1),
     JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),

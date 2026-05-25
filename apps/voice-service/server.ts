@@ -4,7 +4,7 @@ import { env, logger } from '@ai-interviewer/shared';
 import { SessionStore } from './session/store';
 import { DeepgramSTTAdapter } from './providers/stt';
 import { OpenRouterLLMAdapter } from './providers/llm';
-import { GoogleTTSAdapter } from './providers/tts';
+import { DeepgramTTSAdapter } from './providers/tts';
 import { TurnOrchestrator } from './handlers/turn';
 import { WSMessage } from '@ai-interviewer/shared';
 
@@ -41,7 +41,7 @@ wss.on('connection', async (ws: WebSocket) => {
 
           const stt = new DeepgramSTTAdapter();
           const llm = new OpenRouterLLMAdapter();
-          const tts = new GoogleTTSAdapter();
+          const tts = new DeepgramTTSAdapter();
 
           orchestrator = new TurnOrchestrator({
             stt,

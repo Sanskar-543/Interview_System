@@ -8,9 +8,10 @@ import { LLMProvider, ChatMessage, LLMStreamConfig } from '../../apps/voice-serv
 import { TTSProvider } from '../../apps/voice-service/providers/tts';
 
 class MockSTT implements STTProvider {
-  async start(): Promise<void> {}
-  sendAudio(): void {}
-  async stop(): Promise<void> {}
+  async startSession(sessionId: string): Promise<void> {}
+  sendAudio(audioChunk: Buffer): void {}
+  onTurnComplete(callback: (transcript: string) => void): void {}
+  endSession(): void {}
 }
 
 class MockLLM implements LLMProvider {

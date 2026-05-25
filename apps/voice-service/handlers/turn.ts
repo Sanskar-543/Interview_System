@@ -56,35 +56,29 @@ export class TurnOrchestrator {
     // Seed generic questions on startup
     await this.breaker.seedGenericQuestions();
 
-    await this.stt.start({
-      onTranscript: async (text: string, isFinal: boolean) => {
-        if (isFinal) {
-          logger.info({ sessionId: this.sessionId, text }, 'Orchestrator: Final transcript received');
-          this.sendWSMessage({
-            type: 'transcript_final',
-            text,
-            timestamp: new Date().toISOString(),
-          });
-          
-          await this.handleUserUtterance(text);
-        } else {
-          this.sendWSMessage({
-            type: 'transcript_interim',
-            text,
-            timestamp: new Date().toISOString(),
-          });
-        }
-      },
-      onError: (error: Error) => {
-        logger.error({ sessionId: this.sessionId, error }, 'Orchestrator: STT stream failure');
-        this.sendWSMessage({
-          type: 'error',
-          code: 'STT_ERROR',
-          message: error.message,
-          timestamp: new Date().toISOString(),
-        });
-      },
+    // Register turn complete callback
+    this.stt.onTurnComplete(async (transcript: string) => {
+      logger.info({ sessionId: this.sessionId, text: transcript }, 'Orchestrator: STT turn complete received');
+      this.sendWSMessage({
+        type: 'transcript_final',
+        text: transcript,
+        timestamp: new Date().toISOString(),
+      });
+      await this.handleUserUtterance(transcript);
     });
+
+    // Start streaming session
+    try {
+      await this.stt.startSession(this.sessionId);
+    } catch (error: any) {
+      logger.error({ sessionId: this.sessionId, error }, 'Orchestrator: STT stream initialization failure');
+      this.sendWSMessage({
+        type: 'error',
+        code: 'STT_ERROR',
+        message: error.message || String(error),
+        timestamp: new Date().toISOString(),
+      });
+    }
   }
 
   handleAudioChunk(chunk: Buffer): void {
@@ -240,7 +234,7 @@ ${ragChunks && ragChunks.length > 0 ? `Here are some role-specific question prom
   }
 
   async cleanup(): Promise<void> {
-    await this.stt.stop();
+    this.stt.endSession();
     logger.info({ sessionId: this.sessionId }, 'Orchestrator: STT adapters terminated');
 
     try {

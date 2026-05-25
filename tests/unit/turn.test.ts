@@ -3,15 +3,16 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { TurnOrchestrator } from '../../apps/voice-service/handlers/turn';
 import { Turn, WSMessage } from '@ai-interviewer/shared';
-import { STTProvider, STTStreamConfig } from '../../apps/voice-service/providers/stt';
+import { STTProvider } from '../../apps/voice-service/providers/stt';
 import { LLMProvider, ChatMessage, LLMStreamConfig } from '../../apps/voice-service/providers/llm';
 import { TTSProvider } from '../../apps/voice-service/providers/tts';
 
 // Mock Providers
 class MockSTT implements STTProvider {
-  async start(config: STTStreamConfig): Promise<void> {}
-  sendAudio(chunk: Buffer): void {}
-  async stop(): Promise<void> {}
+  async startSession(sessionId: string): Promise<void> {}
+  sendAudio(audioChunk: Buffer): void {}
+  onTurnComplete(callback: (transcript: string) => void): void {}
+  endSession(): void {}
 }
 
 class MockLLM implements LLMProvider {
