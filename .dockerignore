@@ -1,0 +1,14 @@
+node_modules
+.git
+.github
+dist
+.next
+out
+*.log
+*.txt
+.env
+.env.*
+! .env.example
+secrets
+.agents
+.antigravitycli

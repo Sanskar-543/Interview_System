@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "main": "./server.ts",
+  "scripts": {
+    "build": "tsc"
+  },
   "dependencies": {
     "@ai-interviewer/db": "file:../../packages/db",
     "@ai-interviewer/queue": "file:../../packages/queue",
