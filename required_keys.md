@@ -31,9 +31,8 @@ Hot-path APIs responsible for real-time speech transcribing, follow-up generatio
 
 | Environment Variable | Provider | Purpose | Where to Get It |
 |----------------------|----------|---------|-----------------|
-| **`DEEPGRAM_API_KEY`** | [Deepgram](https://console.deepgram.com) | Transcribes real-time binary audio stream (candidate's voice) into text. | Sign up at Deepgram and create an API Key under your project console. |
+| **`DEEPGRAM_API_KEY`** | [Deepgram](https://console.deepgram.com) | Transcribes real-time binary audio stream (STT) and synthesizes follow-up responses into waveNet-like natural audio (TTS). | Sign up at Deepgram and create an API Key under your project console. |
 | **`OPENROUTER_API_KEY`** | [OpenRouter](https://openrouter.ai) | Streams conversational follow-ups (LLM) and computes nomic text RAG embeddings. | Create an account at OpenRouter, top-up standard balance (e.g. $10), and generate an API key. |
-| **`GOOGLE_TTS_API_KEY`** | [Google Cloud Console](https://console.cloud.google.com) | Synthesizes conversational follow-ups back into natural waveNet audio chunks. | Enable the Text-to-Speech API in your Google Cloud Project and generate a general Web API Key. |
 
 ---
 
@@ -49,6 +48,28 @@ Handles subscriptions, candidate upgrades, and failed interview credit rollbacks
 
 ---
 
+## 5. Network & Routing Configuration
+
+Configures CORS origins and routing proxy URLs.
+
+| Environment Variable | Service / Purpose | Requirement / Format |
+|----------------------|-------------------|----------------------|
+| **`CORS_ORIGIN`** | Sets allowed origins on the API Gateway. | Optional. The URL of the Next.js frontend (e.g., `https://my-app.vercel.app` or `http://localhost:3000`). |
+| **`VOICE_SERVICE_URL`** | The target WebSocket URL for gateway proxying voice connections. | Optional. Defaults to `ws://localhost:[PORT+1]` (e.g., `ws://localhost:5001`). |
+
+---
+
+## 6. Frontend Client-Side Environment Variables
+
+Loaded on the client-side Next.js application.
+
+| Environment Variable | Purpose | Default / Example |
+|----------------------|---------|-------------------|
+| **`NEXT_PUBLIC_API_URL`** | Next.js API URL pointing to the Gateway server. | `http://localhost:5000` |
+| **`NEXT_PUBLIC_WS_URL`** | Next.js WebSocket URL pointing to the Gateway server. | `ws://localhost:5000` |
+
+---
+
 ## 🚀 Production `.env` Template
 
 Create a `.env` file in the root folder of your monorepo and populate these values before starting the services:
@@ -57,6 +78,7 @@ Create a `.env` file in the root folder of your monorepo and populate these valu
 # Node Environment
 NODE_ENV=production
 PORT=5000
+LOG_LEVEL=info
 
 # Security (JWT Auth)
 JWT_SECRET=your_secure_32_character_jwt_secret_here
@@ -65,13 +87,20 @@ JWT_SECRET=your_secure_32_character_jwt_secret_here
 DATABASE_URL=postgres://user:password@host.neon.tech/neondb?sslmode=require
 REDIS_URL=rediss://default:password@host.upstash.io:6379
 
-# Conversational AI (Deepgram, OpenRouter, Google Cloud)
+# Conversational AI (Deepgram & OpenRouter)
 DEEPGRAM_API_KEY=dg_your_deepgram_api_key_here
 OPENROUTER_API_KEY=sk-or-v1-your_openrouter_api_key_here
-GOOGLE_TTS_API_KEY=AIzaSy_your_google_tts_api_key_here
 
 # Billing & Monetization (Razorpay)
 RAZORPAY_KEY_ID=rzp_live_your_key_id_here
 RAZORPAY_KEY_SECRET=your_razorpay_secret_here
 RAZORPAY_WEBHOOK_SECRET=your_razorpay_webhook_secret_here
+
+# Network / Gateway Configuration
+CORS_ORIGIN=https://your-frontend-app.vercel.app
+VOICE_SERVICE_URL=wss://your-voice-service-app.railway.app
+
+# Next.js Client-Side Configuration
+NEXT_PUBLIC_API_URL=https://your-gateway-app.railway.app
+NEXT_PUBLIC_WS_URL=wss://your-gateway-app.railway.app
 ```
