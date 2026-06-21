@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 
 # Environment
@@ -8,6 +8,7 @@ node_modules/
 
 # Build outputs
 dist/
+.next/
 .turbo/
 coverage/
 

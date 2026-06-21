@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useVoice } from '../hooks/useVoice';
+import { useVoice } from '../../../hooks/useVoice';
 import { Turn } from '@ai-interviewer/shared';
 import { Mic, MicOff, Play, Square, RefreshCw, Activity, Terminal, Shield, Cpu, MessageSquare } from 'lucide-react';
 
@@ -21,7 +21,7 @@ export default function Home() {
     startRecording,
     stopRecording,
   } = useVoice({
-    gatewayUrl: 'ws://localhost:5000', // Express gateway endpoint (proxied to voice-service)
+    gatewayUrl: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:5000',
     onTranscriptInterim: (text) => {
       setInterimTranscript(text);
     },

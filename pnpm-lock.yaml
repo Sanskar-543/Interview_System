@@ -96,6 +96,9 @@ importers:
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3
+      cors:
+        specifier: ^2.8.5
+        version: 2.8.6
       drizzle-orm:
         specifier: ^0.30.10
         version: 0.30.10(@neondatabase/serverless@0.9.5)(@types/pg@8.20.0)(@types/react@18.3.29)(pg@8.21.0)(react@18.3.1)
@@ -115,6 +118,9 @@ importers:
       '@types/bcryptjs':
         specifier: ^2.4.6
         version: 2.4.6
+      '@types/cors':
+        specifier: ^2.8.17
+        version: 2.8.19
       '@types/express':
         specifier: ^4.17.21
         version: 4.17.25
@@ -1137,6 +1143,9 @@ packages:
   '@types/connect@3.4.38':
     resolution: {integrity: sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug==}
 
+  '@types/cors@2.8.19':
+    resolution: {integrity: sha512-mFNylyeyqN93lfe/9CSxOGREz8cpzAhH+E93xJ4xWQf62V8sQ/24reV2nyzUWM6H6Xji+GGHpkbLe7pVoUEskg==}
+
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
@@ -1347,6 +1356,10 @@ packages:
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
     engines: {node: '>= 0.6'}
+
+  cors@2.8.6:
+    resolution: {integrity: sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw==}
+    engines: {node: '>= 0.10'}
 
   cron-parser@4.9.0:
     resolution: {integrity: sha512-p0SaNjrHOnQeR8/VnfGbmg9te2kfyYSQ7Sc/j/6DtPL3JQvKxmjO9TSjNFpujqV3vEYYBvNNvXSxzyksBWAx1Q==}
@@ -1920,6 +1933,10 @@ packages:
   npm-run-path@5.3.0:
     resolution: {integrity: sha512-ppwTtiJZq0O/ai0z7yfudtBpWIoxM8yE6nHi1X47eFR2EWORqfbu6CnPlNsjeN683eT0qG6H/Pyf9fCcvjnnnQ==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
+  object-assign@4.1.1:
+    resolution: {integrity: sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==}
+    engines: {node: '>=0.10.0'}
 
   object-inspect@1.13.4:
     resolution: {integrity: sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==}
@@ -2901,6 +2918,10 @@ snapshots:
     dependencies:
       '@types/node': 20.19.41
 
+  '@types/cors@2.8.19':
+    dependencies:
+      '@types/node': 20.19.41
+
   '@types/estree@1.0.8': {}
 
   '@types/estree@1.0.9': {}
@@ -3144,6 +3165,11 @@ snapshots:
   cookie-signature@1.0.7: {}
 
   cookie@0.7.2: {}
+
+  cors@2.8.6:
+    dependencies:
+      object-assign: 4.1.1
+      vary: 1.1.2
 
   cron-parser@4.9.0:
     dependencies:
@@ -3784,6 +3810,8 @@ snapshots:
   npm-run-path@5.3.0:
     dependencies:
       path-key: 4.0.0
+
+  object-assign@4.1.1: {}
 
   object-inspect@1.13.4: {}
 

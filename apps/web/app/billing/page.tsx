@@ -131,7 +131,7 @@ export default function BillingPage() {
       await fetchUser(); // Reload updated plan status
 
     } catch (err: any) {
-      logger.error(err);
+      console.error(err);
       setMessage({ type: 'error', text: err.message || 'Upgrade simulation failed.' });
     } finally {
       setUpgrading(false);

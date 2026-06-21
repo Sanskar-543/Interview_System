@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import httpProxy from 'http-proxy';
 import { env, logger } from '@ai-interviewer/shared';
@@ -13,13 +14,19 @@ import { billingRouter, billingWebhookHandler } from './routes/billing';
 const app = express();
 const server = createServer(app);
 
+// CORS — allow Vercel frontend origin
+app.use(cors({
+  origin: env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'],
+  credentials: true,
+}));
+
 // MANDATORY CORRECTION 1: Razorpay webhook mounted BEFORE express.json() using raw body parser
 app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json' }), billingWebhookHandler);
 
 app.use(express.json());
 
 // Proxy for WebSocket voice connections to the voice-service
-const wsProxyTarget = `ws://localhost:${env.PORT + 1}`;
+const wsProxyTarget = env.VOICE_SERVICE_URL || `ws://localhost:${env.PORT + 1}`;
 const proxy = httpProxy.createProxyServer({
   target: wsProxyTarget,
   ws: true,

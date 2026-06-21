@@ -13,6 +13,8 @@ export const env = createEnv({
     RAZORPAY_KEY_ID: z.string().optional(),
     RAZORPAY_KEY_SECRET: z.string().optional(),
     RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+    CORS_ORIGIN: z.string().optional(),
+    VOICE_SERVICE_URL: z.string().optional(),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,
