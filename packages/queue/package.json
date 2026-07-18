@@ -2,8 +2,11 @@
   "name": "@ai-interviewer/queue",
   "version": "0.1.0",
   "private": true,
-  "main": "./jobs.ts",
-  "types": "./jobs.ts",
+  "main": "./dist/jobs.js",
+  "types": "./dist/jobs.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
   "dependencies": {
     "@ai-interviewer/shared": "file:../shared",
     "bullmq": "^5.8.3",

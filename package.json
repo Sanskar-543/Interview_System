@@ -2,6 +2,7 @@
   "name": "ai-interviewer-monorepo",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.28.0",
   "description": "AI Mock Interviewer Platform Monorepo",
   "scripts": {
     "test:integration": "tsx --test tests/integration/session.test.ts",

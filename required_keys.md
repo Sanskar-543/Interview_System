@@ -42,9 +42,9 @@ Handles subscriptions, candidate upgrades, and failed interview credit rollbacks
 
 | Environment Variable | Provider | Purpose | Where to Get It |
 |----------------------|----------|---------|-----------------|
-| **`RAZORPAY_KEY_ID`** | [Razorpay](https://dashboard.razorpay.com) | Loaded on the client-side pricing portal to initialize the Razorpay checkout overlay. | Razorpay Dashboard → Settings → API Keys (Test/Live mode). |
-| **`RAZORPAY_KEY_SECRET`** | [Razorpay](https://dashboard.razorpay.com) | Loaded on the API gateway to initiate payment order payloads. | Generated alongside your `RAZORPAY_KEY_ID`. |
-| **`RAZORPAY_WEBHOOK_SECRET`** | [Razorpay](https://dashboard.razorpay.com) | Shared webhook signing key used by the gateway to verify postback payloads. | Razorpay Dashboard → Webhooks → Add Webhook URL (`/api/v1/billing/webhook`) and define a secret. |
+| **`RAZORPAY_KEY_ID`** | [Razorpay](https://dashboard.razorpay.com) | Loaded on the client-side pricing portal to initialize the Razorpay checkout overlay. Required by the Gateway in production. | Razorpay Dashboard → Settings → API Keys (Test/Live mode). |
+| **`RAZORPAY_KEY_SECRET`** | [Razorpay](https://dashboard.razorpay.com) | Defined in config schema but **UNUSED** by the codebase (all billing checkouts and refunds are simulated/mocked). | Optional / Unused. |
+| **`RAZORPAY_WEBHOOK_SECRET`** | [Razorpay](https://dashboard.razorpay.com) | Shared webhook signing key used by the gateway to verify postback payloads. Defaults to `mock_webhook_secret` if omitted. | Razorpay Dashboard → Webhooks → Add Webhook URL (`/api/v1/billing/webhook`) and define a secret. |
 
 ---
 
@@ -56,6 +56,7 @@ Configures CORS origins and routing proxy URLs.
 |----------------------|-------------------|----------------------|
 | **`CORS_ORIGIN`** | Sets allowed origins on the API Gateway. | Optional. The URL of the Next.js frontend (e.g., `https://my-app.vercel.app` or `http://localhost:3000`). |
 | **`VOICE_SERVICE_URL`** | The target WebSocket URL for gateway proxying voice connections. | Optional. Defaults to `ws://localhost:[PORT+1]` (e.g., `ws://localhost:5001`). |
+| **`WORKER_URL`** | The public HTTP URL of the background worker service. Used by Gateway/Voice service to wake the worker container on Render. | Optional. The URL of your deployed Worker Web Service (e.g., `https://ai-interviewer-worker.onrender.com`). |
 
 ---
 
@@ -93,12 +94,13 @@ OPENROUTER_API_KEY=sk-or-v1-your_openrouter_api_key_here
 
 # Billing & Monetization (Razorpay)
 RAZORPAY_KEY_ID=rzp_live_your_key_id_here
-RAZORPAY_KEY_SECRET=your_razorpay_secret_here
+RAZORPAY_KEY_SECRET=unused_in_codebase
 RAZORPAY_WEBHOOK_SECRET=your_razorpay_webhook_secret_here
 
 # Network / Gateway Configuration
 CORS_ORIGIN=https://your-frontend-app.vercel.app
 VOICE_SERVICE_URL=wss://your-voice-service-app.railway.app
+WORKER_URL=https://your-worker-app.onrender.com
 
 # Next.js Client-Side Configuration
 NEXT_PUBLIC_API_URL=https://your-gateway-app.railway.app

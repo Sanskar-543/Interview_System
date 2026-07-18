@@ -19,10 +19,14 @@ RUN pnpm install --frozen-lockfile
 
 # Copy source code and build service
 COPY . .
-RUN pnpm --filter @ai-interviewer/worker build
+RUN pnpm --filter @ai-interviewer/shared build && \
+    pnpm --filter @ai-interviewer/db build && \
+    pnpm --filter @ai-interviewer/queue build && \
+    pnpm --filter @ai-interviewer/rag build && \
+    pnpm --filter @ai-interviewer/worker build
 
 # Prune workspace dependencies: copy built assets and production deps into isolation
-RUN pnpm --filter @ai-interviewer/worker --prod deploy /prod/app
+RUN pnpm --filter @ai-interviewer/worker --prod deploy /prod/app --legacy
 
 # Stage 2: Runner
 FROM node:20-alpine AS runner
@@ -36,6 +40,13 @@ COPY --from=builder --chown=nodejs:nodejs /prod/app ./
 
 USER nodejs
 
+EXPOSE 8000
+
+# Healthcheck for Worker HTTP service
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:' + (process.env.PORT || 8000) + '/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
+
+ENV PORT=8000
 ENV NODE_ENV=production
 
 CMD ["node", "dist/index.js"]

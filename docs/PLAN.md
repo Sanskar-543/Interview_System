@@ -69,8 +69,8 @@ An AI-powered voice interview platform where candidates practice job interviews 
 | Cache / queue | Upstash Redis | 10k req/day |
 | STT | Deepgram | $200 credit on signup |
 | LLM | OpenRouter (free models) | 1000 req/day after $10 top-up |
-| LLM (eval) | AWS Bedrock | $200 credits (6 months) |
-| TTS | Google Cloud TTS | 1M chars/month (WaveNet) |
+| LLM (eval) | OpenRouter (free models) | 1000 req/day after $10 top-up |
+| TTS | Deepgram (Aura) | Included in Deepgram free credit |
 | CI/CD | GitHub Actions | 2000 min/month |
 | Monitoring | BetterUptime | Uptime alerts free |
 | Billing | Razorpay | No monthly fee |
@@ -84,8 +84,8 @@ An AI-powered voice interview platform where candidates practice job interviews 
 
 ### LLM strategy
 
-- **Voice loop (real-time):** OpenRouter free models,aws bedrock models — rotate across different models to 20x daily quota.
-- **Post-session eval:** AWS Bedrock (Claude Sonnet) — higher quality, lower frequency, use $200 credits here
+- **Voice loop (real-time):** OpenRouter free models (defaults to meta-llama/llama-3-8b-instruct:free) — rotate across different models to 20x daily quota.
+- **Post-session eval:** OpenRouter free models (defaults to meta-llama/llama-3-8b-instruct:free) — higher quality, lower frequency.
 - **Fallback chain on circuit open:** primary LLM → backup free model rotation → Redis cached questions → credit refund
 
 ---
@@ -173,7 +173,7 @@ Step 2  Audio chunk sent over WS        ~10ms    binary PCM 16kHz frames
 Step 3  Deepgram returns transcript     ~300ms   streaming interim + final result
 Step 4  Context assembled               ~80ms    Redis history + pgvector RAG (PARALLEL)
 Step 5  LLM streams tokens              ~800ms   OpenRouter · first token target
-Step 6  Google TTS streams audio        ~200ms   sentence-by-sentence · overlaps step 5
+Step 6  Deepgram TTS streams audio      ~200ms   sentence-by-sentence · overlaps step 5
 Step 7  Redis write (BEFORE audio sent) ~5ms     write-ahead — crash recovery depends on this
 Step 8  Audio plays in browser          —        Web Audio API · buffered chunks
 Step 9  Loop repeats                    —        ↻ next turn begins
@@ -183,7 +183,7 @@ Step 9  Loop repeats                    —        ↻ next turn begins
 
 **Parallelism:** Steps 4a (Redis history fetch) and 4b (pgvector RAG lookup) run with `Promise.all()` — never sequentially.
 
-**TTS pipeline trick:** Do not wait for the full LLM response before calling TTS. Pipe tokens into a sentence buffer. The moment a `.` or `?` is detected, fire that sentence to Google TTS immediately. The candidate hears sentence 1 while the LLM is still writing sentence 3. This cuts perceived latency from ~3s to ~1.4s.
+**TTS pipeline trick:** Do not wait for the full LLM response before calling TTS. Pipe tokens into a sentence buffer. The moment a `.` or `?` is detected, fire that sentence to Deepgram TTS immediately. The candidate hears sentence 1 while the LLM is still writing sentence 3. This cuts perceived latency from ~3s to ~1.4s.
 
 ---
 
@@ -553,9 +553,9 @@ Browsers cannot call gRPC directly — HTTP/2 framing is blocked. `grpc-web` req
 
 GraphQL solves flexible querying from heterogeneous clients. Between services you own, every caller knows exactly what it needs. GraphQL adds schema definitions, resolver functions, query parsing overhead, and N+1 guards for zero benefit. REST for cold-path internal calls. gRPC for hot-path.
 
-### Why Google TTS over ElevenLabs (for now)
+### Why Deepgram TTS over ElevenLabs (for now)
 
-1M chars/month free vs 10k/month. `en-IN-Neural2-A` sounds natural for the Indian market. Upgrade path to ElevenLabs is one file change in `providers/tts.ts` — the adapter pattern exists for exactly this reason.
+Deepgram provides a highly natural, conversational female voice (Aura Asteria) with extremely low latency, and is billed directly alongside our speech-to-text service under the same Deepgram API key. Upgrade path to other providers is one file change in `providers/tts.ts` — the adapter pattern exists for exactly this reason.
 
 ### CQRS for analytics
 

@@ -15,6 +15,7 @@ export const env = createEnv({
     RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
     CORS_ORIGIN: z.string().optional(),
     VOICE_SERVICE_URL: z.string().optional(),
+    WORKER_URL: z.string().url().optional(),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

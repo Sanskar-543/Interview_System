@@ -1,3 +1,4 @@
+import http from 'http';
 import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { env, logger } from '@ai-interviewer/shared';
@@ -37,3 +38,19 @@ billingWorker.on('failed', (job, err) => {
 });
 
 logger.info('Worker: Asynchronous Background Job Workers running successfully.');
+
+// Create a dummy HTTP server for Render's health checks and to allow waking up the service
+const port = process.env.PORT || 8000;
+const server = http.createServer((req, res) => {
+  if (req.url === '/health' || req.url === '/ping') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', message: 'Worker is active and polling queues' }));
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+  }
+});
+
+server.listen(port, () => {
+  logger.info(`Worker HTTP server listening on port ${port} for Render health checks and wakeups`);
+});

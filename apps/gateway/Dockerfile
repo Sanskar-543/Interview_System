@@ -19,10 +19,14 @@ RUN pnpm install --frozen-lockfile
 
 # Copy source code and build service
 COPY . .
-RUN pnpm --filter @ai-interviewer/gateway build
+RUN pnpm --filter @ai-interviewer/shared build && \
+    pnpm --filter @ai-interviewer/db build && \
+    pnpm --filter @ai-interviewer/queue build && \
+    pnpm --filter @ai-interviewer/rag build && \
+    pnpm --filter @ai-interviewer/gateway build
 
 # Prune workspace dependencies: copy built assets and production deps into isolation
-RUN pnpm --filter @ai-interviewer/gateway --prod deploy /prod/app
+RUN pnpm --filter @ai-interviewer/gateway --prod deploy /prod/app --legacy
 
 # Stage 2: Runner
 FROM node:20-alpine AS runner
@@ -30,7 +34,7 @@ WORKDIR /app
 
 # Run as non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nodejs
+  adduser --system --uid 1001 nodejs
 
 COPY --from=builder --chown=nodejs:nodejs /prod/app ./
 

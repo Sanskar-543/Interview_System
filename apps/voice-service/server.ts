@@ -97,7 +97,9 @@ wss.on('connection', async (ws: WebSocket) => {
   });
 });
 
-const VOICE_PORT = env.PORT + 1;
+// In production, listen directly on env.PORT (e.g. 3001). In development, use env.PORT + 1 (e.g. 5001) to avoid conflicts with the gateway on env.PORT.
+const VOICE_PORT = process.env.NODE_ENV === 'production' ? env.PORT : env.PORT + 1;
 server.listen(VOICE_PORT, () => {
   logger.info(`VoiceService: WebSocket server listening on port ${VOICE_PORT}`);
 });
+
