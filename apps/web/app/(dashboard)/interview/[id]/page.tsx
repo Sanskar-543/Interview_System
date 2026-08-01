@@ -1,10 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useVoice } from '../../../../hooks/useVoice';
 import { Turn } from '@ai-interviewer/shared';
-import { Mic, MicOff, Activity, Terminal, Cpu, MessageSquare, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Mic,
+  MicOff,
+  PhoneOff,
+  MessageSquare,
+  Settings,
+  ArrowLeft,
+  X,
+  Volume2,
+  Sparkles,
+  UserCheck,
+} from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -18,13 +29,17 @@ export default function InterviewRoomPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [endingSession, setEndingSession] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [secondsElapsed, setSecondsElapsed] = useState(0);
 
-  const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const getToken = () => (typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '');
 
   const {
     isConnected,
     isRecording,
-    isPlaying,
+    status,
+    micVolume,
     connect,
     disconnect,
     startRecording,
@@ -41,10 +56,20 @@ export default function InterviewRoomPage() {
       }
     },
     onError: (err) => loggerError(err.message),
-    onSessionStarted: () => {
-      setErrorMsg(null);
-    },
   });
+
+  // Session elapsed timer (MM:SS)
+  useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+    if (isConnected) {
+      timer = setInterval(() => {
+        setSecondsElapsed((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isConnected]);
 
   useEffect(() => {
     const token = getToken();
@@ -52,14 +77,18 @@ export default function InterviewRoomPage() {
       router.push('/login');
       return;
     }
-
-    // Connect to WebSocket when page loads
     connect();
-
     return () => {
       disconnect();
     };
   }, [sessionId, connect, disconnect, router]);
+
+  // Auto-scroll transcript drawer to bottom
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [turns, interimTranscript]);
 
   const loggerError = (msg: string) => {
     setErrorMsg(msg);
@@ -94,7 +123,6 @@ export default function InterviewRoomPage() {
         throw new Error(data.error?.message || 'Failed to end session');
       }
 
-      // Redirect to score report page
       router.push(`/report/${sessionId}`);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Error ending session');
@@ -102,449 +130,627 @@ export default function InterviewRoomPage() {
     }
   };
 
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // State text mapping
+  const getStatusMessage = () => {
+    switch (status) {
+      case 'connecting':
+        return 'Connecting to AI Interviewer...';
+      case 'listening':
+        return isRecording ? 'Listening to your response...' : 'Microphone ready — Speak when ready';
+      case 'processing':
+        return 'AI is evaluating your answer...';
+      case 'speaking':
+        return 'AI Interviewer speaking...';
+      case 'error':
+        return 'Connection interrupted. Retrying...';
+      default:
+        return 'Session Active';
+    }
+  };
+
   return (
-    <div style={styles.container}>
-      <div style={styles.radialGlow1} />
-      <div style={styles.radialGlow2} />
+    <div style={styles.videoRoomWrapper}>
 
-      <main style={styles.main}>
-        {/* Top Header Navigation */}
-        <header style={styles.header}>
-          <div style={styles.headerLeft}>
-            <button onClick={() => router.push('/')} style={styles.backBtn}>
-              <ArrowLeft size={16} /> Dashboard
-            </button>
-            <div style={styles.logoContainer}>
-              <Activity style={{ color: '#2563EB' }} size={24} />
-              <span style={styles.logoText}>SpeechAI Room</span>
-            </div>
+      {/* 1. TOP MINIMAL HEADER BAR */}
+      <header style={styles.topHeader}>
+        <div style={styles.headerLeft}>
+          <button onClick={() => router.push('/')} style={styles.dashboardBackBtn}>
+            <ArrowLeft size={16} /> Dashboard
+          </button>
+          <div style={styles.roomBadge}>
+            <Sparkles size={14} color="#8B5CF6" />
+            <span style={styles.roomTitle}>AI Senior Technical Interview</span>
+          </div>
+        </div>
+
+        <div style={styles.headerRight}>
+          {/* Interview Timer */}
+          <div style={styles.timerBadge}>
+            <span style={styles.timerText}>⏱️ {formatTimer(secondsElapsed)}</span>
           </div>
 
-          <div style={styles.headerRight}>
-            <div style={styles.statusBadge}>
-              <span style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: isConnected ? '#10B981' : '#EF4444',
-                boxShadow: isConnected ? '0 0 10px #10B981' : '0 0 10px #EF4444',
-              }} />
-              <span style={styles.statusText}>{isConnected ? 'LIVE SESSION' : 'DISCONNECTED'}</span>
-            </div>
-
-            <button
-              onClick={handleEndSession}
-              disabled={endingSession}
+          {/* Connection Status Dot */}
+          <div style={styles.connectionBadge}>
+            <span
               style={{
-                ...styles.endSessionBtn,
-                opacity: endingSession ? 0.7 : 1,
+                ...styles.connectionDot,
+                backgroundColor: isConnected ? '#10B981' : status === 'connecting' ? '#F59E0B' : '#EF4444',
+                boxShadow: isConnected ? '0 0 10px #10B981' : '0 0 10px #EF4444',
               }}
-            >
-              <CheckCircle2 size={16} />
-              {endingSession ? 'Evaluating...' : 'End & Evaluate'}
-            </button>
+            />
+            <span style={styles.connectionText}>
+              {isConnected ? 'CONNECTED' : status === 'connecting' ? 'RECONNECTING' : 'OFFLINE'}
+            </span>
           </div>
-        </header>
+        </div>
+      </header>
 
-        {/* Content Grid */}
-        <div style={styles.grid}>
-          {/* Left Console */}
-          <section style={styles.panelLeft}>
-            <div style={styles.cardHeader}>
-              <Cpu size={18} color="#9CA3AF" />
-              <h2 style={styles.cardTitle}>Audio Console</h2>
-            </div>
-
-            <div style={styles.sessionState}>
-              <div style={styles.stateRow}>
-                <span style={styles.stateLabel}>Session ID:</span>
-                <span style={styles.stateValue}>{sessionId.slice(0, 16)}...</span>
-              </div>
-              <div style={styles.stateRow}>
-                <span style={styles.stateLabel}>Response Latency:</span>
-                <span style={{
-                  ...styles.stateValue,
-                  color: latencyMs ? (latencyMs < 1500 ? '#10B981' : '#F59E0B') : '#9CA3AF'
-                }}>
-                  {latencyMs ? `${(latencyMs / 1000).toFixed(2)}s` : 'Real-time'}
-                </span>
-              </div>
-            </div>
-
-            {/* Mic Visualizer Area */}
-            <div style={styles.visualizerContainer}>
-              <div style={{
-                ...styles.pulseRing,
-                animation: isRecording ? 'pulseGlow 2s infinite' : isPlaying ? 'pulseGlow 2s infinite' : 'none',
-                borderColor: isRecording ? '#3B82F6' : isPlaying ? '#8B5CF6' : '#374151',
-              }} />
-              <div style={{
+      {/* 2. MAIN CENTER INTERVIEW TILE (~70% VIEWPORT) */}
+      <main style={styles.stageViewport}>
+        <div style={styles.mainTile}>
+          
+          {/* Animated Audio-Reactive Ring Container around Avatar */}
+          <div style={styles.avatarStage}>
+            {/* Outer Expanding Pulse Ring — Active strictly on "speaking" */}
+            <div
+              style={{
+                ...styles.pulseRingOuter,
+                opacity: status === 'speaking' ? 0.8 : status === 'processing' ? 0.4 : 0.1,
+                transform: status === 'speaking' ? 'scale(1.25)' : 'scale(1)',
+                animation: status === 'speaking' ? 'pulseRingActive 1.6s ease-in-out infinite' : 'none',
+              }}
+            />
+            {/* Inner Glowing Ring */}
+            <div
+              style={{
                 ...styles.pulseRingInner,
-                animation: isRecording ? 'pulseGlowInner 1.5s infinite' : isPlaying ? 'pulseGlowInner 1.5s infinite' : 'none',
-                borderColor: isRecording ? '#60A5FA' : isPlaying ? '#A78BFA' : '#4B5563',
-              }} />
+                borderColor: status === 'speaking' ? '#8B5CF6' : status === 'processing' ? '#F59E0B' : 'rgba(255,255,255,0.1)',
+                boxShadow: status === 'speaking' ? '0 0 40px rgba(139, 92, 246, 0.6)' : 'none',
+              }}
+            />
 
-              <button
-                onClick={toggleRecording}
-                disabled={!isConnected}
+            {/* Professional AI Interviewer Illustrated Avatar */}
+            <div style={styles.avatarWrapper}>
+              <svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="50" r="48" fill="url(#avatarGradient)" stroke="rgba(255, 255, 255, 0.15)" strokeWidth="2" />
+                <path d="M50 30C41.7157 30 35 36.7157 35 45C35 53.2843 41.7157 60 50 60C58.2843 60 65 53.2843 65 45C65 36.7157 58.2843 30 50 30Z" fill="#E2E8F0" />
+                <path d="M25 80C25 68.9543 33.9543 60 45 60H55C66.0457 60 75 68.9543 75 80V84H25V80Z" fill="#94A3B8" />
+                <circle cx="50" cy="42" r="4" fill="#3B82F6" />
+                <defs>
+                  <linearGradient id="avatarGradient" x1="0" y1="0" x2="100" y2="100">
+                    <stop offset="0%" stopColor="#1E293B" />
+                    <stop offset="100%" stopColor="#0F172A" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+          </div>
+
+          {/* Interviewer Info & Live Status Label */}
+          <div style={styles.interviewerInfo}>
+            <h2 style={styles.interviewerName}>AI Interviewer</h2>
+            <div style={styles.statusRow}>
+              {status === 'speaking' && <Volume2 size={14} color="#C4B5FD" className="animate-pulse" />}
+              <span
                 style={{
-                  ...styles.micButton,
-                  backgroundColor: !isConnected ? '#1F2937' : isRecording ? '#EF4444' : '#2563EB',
-                  cursor: !isConnected ? 'not-allowed' : 'pointer',
-                  transform: isRecording ? 'scale(1.05)' : 'scale(1)',
+                  ...styles.statusMessage,
+                  color: status === 'speaking' ? '#C4B5FD' : status === 'processing' ? '#FDE68A' : '#9CA3AF',
                 }}
               >
-                {isRecording ? <MicOff size={34} color="white" /> : <Mic size={34} color="white" />}
-              </button>
-
-              <span style={{
-                ...styles.visualizerLabel,
-                color: isRecording ? '#60A5FA' : isPlaying ? '#A78BFA' : '#9CA3AF'
-              }}>
-                {isRecording ? 'Listening to Candidate...' : isPlaying ? 'AI Interviewer Speaking...' : 'Click Mic to Speak'}
+                {getStatusMessage()}
               </span>
             </div>
+          </div>
 
-            {errorMsg && (
-              <div style={styles.errorAlert}>
-                <AlertCircle size={16} color="#FCA5A5" />
-                <span style={styles.errorText}>{errorMsg}</span>
-              </div>
-            )}
-          </section>
-
-          {/* Right Live Feed */}
-          <section style={styles.panelRight}>
-            <div style={styles.cardHeader}>
-              <MessageSquare size={18} color="#9CA3AF" />
-              <h2 style={styles.cardTitle}>Live Conversation Transcript</h2>
+          {/* Latency Indicator Tag */}
+          {latencyMs && (
+            <div style={styles.latencyTag}>
+              <span>Latency: {(latencyMs / 1000).toFixed(2)}s</span>
             </div>
+          )}
+        </div>
 
-            <div style={styles.feedScroll}>
-              {turns.length === 0 && !interimTranscript && (
-                <div style={styles.emptyState}>
-                  <Terminal size={36} color="#374151" />
-                  <p style={styles.emptyText}>Conversational turns will appear here in real time as you speak.</p>
-                </div>
-              )}
+        {/* 3. SELF-VIEW PIP TILE (BOTTOM-RIGHT CORNER) */}
+        <div style={styles.selfViewPIP}>
+          <div style={styles.pipHeader}>
+            <UserCheck size={12} color="#10B981" />
+            <span style={styles.pipName}>You</span>
+          </div>
 
-              {turns.map((turn, i) => (
+          {/* Real-time 5-Bar Mic Volume Equalizer */}
+          <div style={styles.equalizerContainer}>
+            {[0.4, 0.7, 1.0, 0.6, 0.3].map((multiplier, idx) => {
+              const barHeight = isRecording ? Math.max(4, Math.min(24, Math.round((micVolume / 100) * 24 * multiplier))) : 3;
+              return (
                 <div
-                  key={turn.id || i}
+                  key={idx}
                   style={{
-                    ...styles.chatBubble,
-                    alignSelf: turn.role === 'user' ? 'flex-end' : 'flex-start',
-                    backgroundColor: turn.role === 'user' ? '#1E3A8A' : '#1F2937',
-                    borderLeft: turn.role === 'user' ? 'none' : '4px solid #8B5CF6',
-                    borderRight: turn.role === 'user' ? '4px solid #3B82F6' : 'none',
+                    ...styles.eqBar,
+                    height: `${barHeight}px`,
+                    backgroundColor: isRecording ? '#3B82F6' : '#4B5563',
                   }}
-                >
-                  <span style={styles.bubbleRole}>{turn.role === 'user' ? 'CANDIDATE' : 'INTERVIEWER'}</span>
-                  <p style={styles.bubbleText}>{turn.transcript}</p>
-                  <span style={styles.bubbleTime}>{new Date(turn.createdAt).toLocaleTimeString()}</span>
-                </div>
-              ))}
+                />
+              );
+            })}
+          </div>
 
-              {interimTranscript && (
-                <div style={{
-                  ...styles.chatBubble,
-                  alignSelf: 'flex-end',
-                  backgroundColor: 'rgba(30, 58, 138, 0.5)',
-                  borderRight: '4px dashed #3B82F6',
-                }}>
-                  <span style={styles.bubbleRole}>CANDIDATE (Listening...)</span>
-                  <p style={{ ...styles.bubbleText, fontStyle: 'italic' }}>{interimTranscript}</p>
-                </div>
-              )}
-            </div>
-          </section>
+          <div style={styles.pipStatusBadge}>
+            {isRecording ? (
+              <span style={{ fontSize: '0.6875rem', color: '#60A5FA', fontWeight: 600 }}>Mic Active</span>
+            ) : (
+              <span style={{ fontSize: '0.6875rem', color: '#EF4444', fontWeight: 600 }}>Muted</span>
+            )}
+          </div>
         </div>
       </main>
+
+      {/* 4. BOTTOM FLOATING CONTROL BAR (ZOOM/MEET STYLE) */}
+      <footer style={styles.bottomControlBar}>
+        <div style={styles.controlPill}>
+          {/* Mic Toggle Button */}
+          <button
+            onClick={toggleRecording}
+            disabled={!isConnected}
+            style={{
+              ...styles.controlBtn,
+              backgroundColor: isRecording ? 'rgba(255, 255, 255, 0.08)' : '#EF4444',
+              color: isRecording ? '#F3F4F6' : '#FFFFFF',
+              borderColor: isRecording ? 'rgba(255, 255, 255, 0.15)' : '#DC2626',
+            }}
+            title={isRecording ? 'Mute Microphone' : 'Unmute Microphone'}
+          >
+            {isRecording ? <Mic size={20} /> : <MicOff size={20} />}
+          </button>
+
+          {/* Toggle Transcript Panel Button */}
+          <button
+            onClick={() => setShowTranscript((prev) => !prev)}
+            style={{
+              ...styles.controlBtn,
+              backgroundColor: showTranscript ? '#8B5CF6' : 'rgba(255, 255, 255, 0.08)',
+              color: 'white',
+              borderColor: showTranscript ? '#7C3AED' : 'rgba(255, 255, 255, 0.15)',
+            }}
+            title="Toggle Transcript Drawer"
+          >
+            <MessageSquare size={20} />
+            {turns.length > 0 && <span style={styles.turnBadge}>{turns.length}</span>}
+          </button>
+
+          {/* Settings Button Placeholder */}
+          <button style={styles.controlBtn} title="Audio Settings">
+            <Settings size={20} />
+          </button>
+
+          {/* End Call / Leave Interview Button */}
+          <button
+            onClick={handleEndSession}
+            disabled={endingSession}
+            style={styles.endCallBtn}
+            title="End Interview & Evaluate"
+          >
+            <PhoneOff size={18} />
+            <span>{endingSession ? 'Evaluating...' : 'End Call'}</span>
+          </button>
+        </div>
+      </footer>
+
+      {/* 5. COLLAPSIBLE SIDE TRANSCRIPT DRAWER */}
+      {showTranscript && (
+        <aside style={styles.transcriptDrawer}>
+          <div style={styles.drawerHeader}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <MessageSquare size={16} color="#A78BFA" />
+              <h3 style={styles.drawerTitle}>Live Transcript</h3>
+            </div>
+            <button onClick={() => setShowTranscript(false)} style={styles.closeDrawerBtn}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <div ref={scrollRef} style={styles.drawerScroll}>
+            {turns.length === 0 && !interimTranscript && (
+              <p style={styles.emptyDrawerText}>No conversation turns logged yet. Speak to begin your interview.</p>
+            )}
+
+            {turns.map((turn, i) => (
+              <div
+                key={turn.id || i}
+                style={{
+                  ...styles.drawerBubble,
+                  backgroundColor: turn.role === 'user' ? 'rgba(37, 99, 235, 0.15)' : 'rgba(31, 41, 55, 0.6)',
+                  borderLeft: turn.role === 'user' ? '3px solid #3B82F6' : '3px solid #8B5CF6',
+                }}
+              >
+                <div style={styles.bubbleMeta}>
+                  <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: turn.role === 'user' ? '#93C5FD' : '#C4B5FD' }}>
+                    {turn.role === 'user' ? 'YOU' : 'AI INTERVIEWER'}
+                  </span>
+                  <span style={styles.bubbleTime}>{new Date(turn.createdAt).toLocaleTimeString()}</span>
+                </div>
+                <p style={styles.bubbleBody}>{turn.transcript}</p>
+              </div>
+            ))}
+
+            {interimTranscript && (
+              <div style={{ ...styles.drawerBubble, backgroundColor: 'rgba(37, 99, 235, 0.08)', borderLeft: '3px dashed #3B82F6' }}>
+                <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#93C5FD' }}>YOU (Speaking...)</span>
+                <p style={{ ...styles.bubbleBody, fontStyle: 'italic', opacity: 0.8 }}>{interimTranscript}</p>
+              </div>
+            )}
+          </div>
+        </aside>
+      )}
+
+      {/* Global CSS Keyframes for Audio Pulse Animations */}
+      <style jsx global>{`
+        @keyframes pulseRingActive {
+          0% {
+            transform: scale(1);
+            opacity: 0.8;
+          }
+          50% {
+            transform: scale(1.22);
+            opacity: 0.4;
+          }
+          100% {
+            transform: scale(1);
+            opacity: 0.8;
+          }
+        }
+      `}</style>
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: {
+  videoRoomWrapper: {
     position: 'relative',
-    minHeight: '100vh',
-    backgroundColor: '#030712',
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: '#090D16',
     color: '#F9FAFB',
     fontFamily: 'Inter, system-ui, sans-serif',
-    overflow: 'hidden',
-  },
-  radialGlow1: {
-    position: 'absolute',
-    top: '-10%',
-    left: '20%',
-    width: '50vw',
-    height: '50vw',
-    borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(37, 99, 235, 0.15) 0%, rgba(3, 7, 18, 0) 70%)',
-    pointerEvents: 'none',
-  },
-  radialGlow2: {
-    position: 'absolute',
-    bottom: '-10%',
-    right: '15%',
-    width: '45vw',
-    height: '45vw',
-    borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, rgba(3, 7, 18, 0) 75%)',
-    pointerEvents: 'none',
-  },
-  main: {
-    position: 'relative',
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: '1.5rem',
     display: 'flex',
     flexDirection: 'column',
-    height: '95vh',
+    overflow: 'hidden',
   },
-  header: {
+  topHeader: {
+    height: '60px',
+    padding: '0 1.5rem',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '1.5rem',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    backdropFilter: 'blur(12px)',
+    zIndex: 10,
   },
   headerLeft: {
     display: 'flex',
     alignItems: 'center',
     gap: '1rem',
   },
-  backBtn: {
+  dashboardBackBtn: {
     display: 'flex',
     alignItems: 'center',
     gap: '0.375rem',
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: '0.5rem',
-    padding: '0.5rem 0.875rem',
+    borderRadius: '0.375rem',
+    padding: '0.375rem 0.75rem',
     color: '#9CA3AF',
     fontSize: '0.8125rem',
     fontWeight: 600,
     cursor: 'pointer',
   },
-  logoContainer: {
+  roomBadge: {
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
   },
-  logoText: {
-    fontSize: '1.25rem',
-    fontWeight: 800,
-    letterSpacing: '-0.025em',
+  roomTitle: {
+    fontSize: '0.9375rem',
+    fontWeight: 700,
+    color: '#F3F4F6',
   },
   headerRight: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.75rem',
+    gap: '1rem',
   },
-  statusBadge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    backgroundColor: '#111827',
-    border: '1px solid #1F2937',
-    padding: '0.4rem 0.875rem',
-    borderRadius: '9999px',
+  timerBadge: {
+    backgroundColor: 'rgba(31, 41, 55, 0.6)',
+    padding: '0.25rem 0.625rem',
+    borderRadius: '0.375rem',
+    border: '1px solid rgba(255, 255, 255, 0.05)',
   },
-  statusText: {
-    fontSize: '0.75rem',
-    fontWeight: 700,
-    letterSpacing: '0.05em',
-    color: '#E5E7EB',
-  },
-  endSessionBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.375rem',
-    backgroundColor: '#10B981',
-    color: 'white',
-    border: 'none',
-    borderRadius: '0.5rem',
-    padding: '0.5rem 1rem',
+  timerText: {
     fontSize: '0.8125rem',
     fontWeight: 700,
-    cursor: 'pointer',
-    fontFamily: 'Inter, system-ui, sans-serif',
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1.5fr',
-    gap: '1.5rem',
-    flex: 1,
-    minHeight: 0,
-  },
-  panelLeft: {
-    backgroundColor: 'rgba(17, 24, 39, 0.6)',
-    backdropFilter: 'blur(12px)',
-    border: '1px solid rgba(255, 255, 255, 0.05)',
-    borderRadius: '1rem',
-    padding: '1.25rem',
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  panelRight: {
-    backgroundColor: 'rgba(17, 24, 39, 0.6)',
-    backdropFilter: 'blur(12px)',
-    border: '1px solid rgba(255, 255, 255, 0.05)',
-    borderRadius: '1rem',
-    padding: '1.25rem',
-    display: 'flex',
-    flexDirection: 'column',
-    minHeight: 0,
-  },
-  cardHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    borderBottom: '1px solid #1F2937',
-    paddingBottom: '0.75rem',
-    marginBottom: '1.25rem',
-  },
-  cardTitle: {
-    fontSize: '1rem',
-    fontWeight: 700,
-    color: '#F3F4F6',
-  },
-  sessionState: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-    backgroundColor: 'rgba(3, 7, 18, 0.5)',
-    border: '1px solid #1F2937',
-    borderRadius: '0.5rem',
-    padding: '0.875rem',
-    marginBottom: '1.5rem',
-  },
-  stateRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    fontSize: '0.8125rem',
-  },
-  stateLabel: {
-    color: '#9CA3AF',
-  },
-  stateValue: {
-    fontWeight: 600,
     fontFamily: 'monospace',
     color: '#E5E7EB',
   },
-  visualizerContainer: {
-    position: 'relative',
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '1.25rem',
-  },
-  micButton: {
-    position: 'relative',
-    width: '80px',
-    height: '80px',
-    borderRadius: '50%',
-    border: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxShadow: '0 8px 25px rgba(0, 0, 0, 0.3)',
-    transition: 'all 0.3s ease',
-    zIndex: 5,
-  },
-  pulseRing: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    width: '80px',
-    height: '80px',
-    borderRadius: '50%',
-    border: '2px solid',
-    pointerEvents: 'none',
-    zIndex: 3,
-  },
-  pulseRingInner: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    width: '80px',
-    height: '80px',
-    borderRadius: '50%',
-    border: '1px solid',
-    pointerEvents: 'none',
-    zIndex: 4,
-  },
-  visualizerLabel: {
-    fontSize: '0.8125rem',
-    fontWeight: 700,
-    letterSpacing: '0.05em',
-    textTransform: 'uppercase',
-  },
-  errorAlert: {
-    marginTop: '1rem',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    border: '1px solid rgba(239, 68, 68, 0.2)',
-    borderRadius: '0.5rem',
-    padding: '0.625rem 0.875rem',
+  connectionBadge: {
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
+    backgroundColor: 'rgba(31, 41, 55, 0.6)',
+    padding: '0.25rem 0.625rem',
+    borderRadius: '9999px',
+    border: '1px solid rgba(255, 255, 255, 0.05)',
   },
-  errorText: {
-    fontSize: '0.75rem',
-    color: '#FCA5A5',
-    fontWeight: 500,
+  connectionDot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
   },
-  feedScroll: {
+  connectionText: {
+    fontSize: '0.6875rem',
+    fontWeight: 700,
+    letterSpacing: '0.05em',
+    color: '#D1D5DB',
+  },
+  stageViewport: {
+    position: 'relative',
     flex: 1,
-    overflowY: 'auto',
+    padding: '1.5rem',
     display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-    paddingRight: '0.375rem',
-    minHeight: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  emptyState: {
-    flex: 1,
+  mainTile: {
+    position: 'relative',
+    width: '100%',
+    maxWidth: '960px',
+    height: 'calc(100% - 2rem)',
+    maxHeight: '620px',
+    background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: '1.25rem',
+    boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '0.75rem',
-    color: '#4B5563',
+    gap: '1.5rem',
+  },
+  avatarStage: {
+    position: 'relative',
+    width: '120px',
+    height: '120px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pulseRingOuter: {
+    position: 'absolute',
+    width: '140px',
+    height: '140px',
+    borderRadius: '50%',
+    border: '2px solid #8B5CF6',
+    transition: 'all 0.3s ease',
+    pointerEvents: 'none',
+  },
+  pulseRingInner: {
+    position: 'absolute',
+    width: '124px',
+    height: '124px',
+    borderRadius: '50%',
+    border: '2px solid',
+    transition: 'all 0.3s ease',
+    pointerEvents: 'none',
+  },
+  avatarWrapper: {
+    position: 'relative',
+    zIndex: 2,
+  },
+  interviewerInfo: {
     textAlign: 'center',
-    padding: '1.5rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.375rem',
   },
-  emptyText: {
+  interviewerName: {
+    fontSize: '1.25rem',
+    fontWeight: 800,
+    color: '#F9FAFB',
+    letterSpacing: '-0.01em',
+  },
+  statusRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.375rem',
+    justifyContent: 'center',
+  },
+  statusMessage: {
+    fontSize: '0.875rem',
+    fontWeight: 600,
+  },
+  latencyTag: {
+    position: 'absolute',
+    bottom: '1rem',
+    left: '1rem',
+    fontSize: '0.75rem',
+    color: '#6B7280',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    padding: '0.25rem 0.5rem',
+    borderRadius: '0.25rem',
+    border: '1px solid rgba(255, 255, 255, 0.05)',
+  },
+  selfViewPIP: {
+    position: 'absolute',
+    bottom: '2.5rem',
+    right: '2.5rem',
+    width: '180px',
+    height: '120px',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    backdropFilter: 'blur(12px)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '0.875rem',
+    boxShadow: '0 8px 30px rgba(0, 0, 0, 0.4)',
+    padding: '0.75rem',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    zIndex: 5,
+  },
+  pipHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.375rem',
+  },
+  pipName: {
+    fontSize: '0.75rem',
+    fontWeight: 700,
+    color: '#E5E7EB',
+  },
+  equalizerContainer: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: '4px',
+    height: '30px',
+  },
+  eqBar: {
+    width: '4px',
+    borderRadius: '2px',
+    transition: 'height 0.1s ease',
+  },
+  pipStatusBadge: {
+    alignSelf: 'flex-end',
+  },
+  bottomControlBar: {
+    height: '80px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: '1rem',
+    zIndex: 10,
+  },
+  controlPill: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.875rem',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    backdropFilter: 'blur(16px)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '9999px',
+    padding: '0.625rem 1.25rem',
+    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)',
+  },
+  controlBtn: {
+    position: 'relative',
+    width: '44px',
+    height: '44px',
+    borderRadius: '50%',
+    border: '1px solid',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  turnBadge: {
+    position: 'absolute',
+    top: '-4px',
+    right: '-4px',
+    backgroundColor: '#3B82F6',
+    color: 'white',
+    fontSize: '0.625rem',
+    fontWeight: 800,
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endCallBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    backgroundColor: '#EF4444',
+    border: 'none',
+    borderRadius: '9999px',
+    padding: '0.625rem 1.25rem',
+    color: 'white',
+    fontSize: '0.875rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 4px 15px rgba(239, 68, 68, 0.4)',
+    transition: 'all 0.2s',
+  },
+  transcriptDrawer: {
+    position: 'absolute',
+    top: '60px',
+    right: 0,
+    width: '360px',
+    height: 'calc(100vh - 60px)',
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+    backdropFilter: 'blur(16px)',
+    borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
+    display: 'flex',
+    flexDirection: 'column',
+    zIndex: 20,
+  },
+  drawerHeader: {
+    padding: '1rem 1.25rem',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  drawerTitle: {
+    fontSize: '0.9375rem',
+    fontWeight: 700,
+    color: '#F9FAFB',
+  },
+  closeDrawerBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#9CA3AF',
+    cursor: 'pointer',
+  },
+  drawerScroll: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '1.25rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.875rem',
+  },
+  emptyDrawerText: {
+    color: '#6B7280',
     fontSize: '0.8125rem',
-    maxWidth: '260px',
+    textAlign: 'center',
+    marginTop: '2rem',
   },
-  chatBubble: {
-    maxWidth: '85%',
-    borderRadius: '0.75rem',
-    padding: '0.875rem 1.125rem',
+  drawerBubble: {
+    padding: '0.75rem 0.875rem',
+    borderRadius: '0.5rem',
     display: 'flex',
     flexDirection: 'column',
     gap: '0.25rem',
   },
-  bubbleRole: {
-    fontSize: '0.625rem',
-    fontWeight: 800,
-    letterSpacing: '0.075em',
-    color: '#9CA3AF',
-  },
-  bubbleText: {
-    fontSize: '0.875rem',
-    lineHeight: 1.5,
-    color: '#F9FAFB',
+  bubbleMeta: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   bubbleTime: {
-    fontSize: '0.6875rem',
+    fontSize: '0.625rem',
     color: '#6B7280',
-    alignSelf: 'flex-end',
+  },
+  bubbleBody: {
+    fontSize: '0.8125rem',
+    color: '#F3F4F6',
+    lineHeight: 1.5,
   },
 };
