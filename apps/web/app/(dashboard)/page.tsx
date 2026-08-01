@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Activity, Plus, Clock, CheckCircle, XCircle, ArrowRight, Zap } from 'lucide-react';
+import { Activity, Plus, Clock, CheckCircle, XCircle, ArrowRight, Zap, LogOut, ShieldAlert } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -16,48 +16,57 @@ interface SessionRecord {
 export default function DashboardPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [user, setUser] = useState<{ name: string; plan: string; sessionCount: number } | null>(null);
+  const [user, setUser] = useState<{ id: string; name: string; email: string; plan: string; sessionCount: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
-  const getToken = () => localStorage.getItem('token') || '';
+  const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
+
+  const fetchData = async () => {
+    const token = getToken();
+    if (!token) {
+      router.push('/login');
+      return;
+    }
+
+    try {
+      const [sessRes, userRes] = await Promise.all([
+        fetch(`${API_URL}/api/v1/sessions`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/v1/users/me`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+
+      if (!sessRes.ok || !userRes.ok) {
+        if (sessRes.status === 401 || userRes.status === 401) {
+          localStorage.removeItem('token');
+          router.push('/login');
+          return;
+        }
+        throw new Error('Failed to load dashboard data');
+      }
+
+      const sessData = await sessRes.json();
+      const userData = await userRes.json();
+      setSessions(sessData.sessions || []);
+      setUser(userData.user || null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      const token = getToken();
-      if (!token) { router.push('/login'); return; }
-
-      try {
-        const [sessRes, userRes] = await Promise.all([
-          fetch(`${API_URL}/api/v1/sessions`, { headers: { Authorization: `Bearer ${token}` } }),
-          fetch(`${API_URL}/api/v1/users/me`, { headers: { Authorization: `Bearer ${token}` } }),
-        ]);
-
-        if (!sessRes.ok || !userRes.ok) {
-          if (sessRes.status === 401 || userRes.status === 401) {
-            localStorage.removeItem('token');
-            router.push('/login');
-            return;
-          }
-          throw new Error('Failed to fetch data');
-        }
-
-        const sessData = await sessRes.json();
-        const userData = await userRes.json();
-        setSessions(sessData.sessions);
-        setUser(userData.user);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to load');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchData();
   }, [router]);
 
   const handleNewSession = async () => {
+    if (user && user.plan === 'free' && user.sessionCount >= 3) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
     setCreating(true);
     setError(null);
     try {
@@ -70,15 +79,34 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 403) {
+          setShowUpgradeModal(true);
+          return;
+        }
         throw new Error(data.error?.message || 'Failed to create session');
       }
-      setSessions(prev => [data.session, ...prev]);
-      if (user) setUser({ ...user, sessionCount: user.sessionCount + 1 });
+
+      // Immediately redirect to interview room
+      router.push(`/interview/${data.session.id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create session');
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleViewDetails = (session: SessionRecord) => {
+    if (session.status === 'active') {
+      router.push(`/interview/${session.id}`);
+    } else {
+      router.push(`/report/${session.id}`);
+    }
+  };
+
+  const handleSignOut = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    router.push('/login');
   };
 
   const statusIcon = (status: string) => {
@@ -101,83 +129,117 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-        <Activity size={32} color="#2563EB" />
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '70vh', gap: '1rem' }}>
+        <Activity size={36} color="#3B82F6" className="animate-spin" />
+        <p style={{ color: '#9CA3AF', fontSize: '0.875rem', fontWeight: 600 }}>Loading Dashboard...</p>
       </div>
     );
   }
 
   return (
-    <div>
-      {/* Header */}
-      <div style={styles.header}>
-        <div>
-          <h1 style={styles.heading}>Dashboard</h1>
-          <p style={styles.subheading}>Your interview sessions and practice history</p>
+    <div style={styles.pageWrapper}>
+      {/* Top Navbar */}
+      <nav style={styles.navbar}>
+        <div style={styles.navLogo}>
+          <Activity size={26} color="#2563EB" />
+          <span style={styles.navTitle}>SpeechAI</span>
         </div>
-        <div style={styles.headerRight}>
-          {user && (
-            <div style={{
-              ...styles.planBadge,
-              backgroundColor: user.plan === 'paid' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(75, 85, 99, 0.2)',
-              borderColor: user.plan === 'paid' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(75, 85, 99, 0.3)',
-              color: user.plan === 'paid' ? '#A78BFA' : '#9CA3AF',
-            }}>
-              <Zap size={14} />
-              {user.plan === 'paid' ? 'Pro Plan' : `Free Plan (${user.sessionCount}/3)`}
-            </div>
-          )}
+
+        <div style={styles.navRight}>
+          {user && <span style={styles.userGreeting}>Hey, {user.name}</span>}
+          <button onClick={() => router.push('/billing')} style={styles.planBtn}>
+            <Zap size={14} color={user?.plan === 'paid' ? '#A78BFA' : '#F59E0B'} />
+            {user?.plan === 'paid' ? 'Pro Plan' : `Free Plan (${user?.sessionCount || 0}/3)`}
+          </button>
+          <button onClick={handleSignOut} style={styles.signOutBtn}>
+            <LogOut size={16} /> Sign out
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Dashboard Body */}
+      <main style={styles.container}>
+        {/* Header */}
+        <div style={styles.header}>
+          <div>
+            <h1 style={styles.heading}>Dashboard</h1>
+            <p style={styles.subheading}>Your interview sessions and practice history</p>
+          </div>
           <button id="new-session-btn" onClick={handleNewSession} disabled={creating} style={{
             ...styles.newSessionBtn,
             opacity: creating ? 0.7 : 1,
           }}>
             <Plus size={18} />
-            {creating ? 'Creating...' : 'New Session'}
+            {creating ? 'Creating...' : '+ New Session'}
           </button>
         </div>
-      </div>
 
-      {error && <div style={styles.errorBox}>{error}</div>}
+        {error && <div style={styles.errorBox}>{error}</div>}
 
-      {/* Sessions grid */}
-      {sessions.length === 0 ? (
-        <div style={styles.emptyState}>
-          <Activity size={48} color="#374151" />
-          <h3 style={styles.emptyTitle}>No sessions yet</h3>
-          <p style={styles.emptyText}>Start your first AI interview to begin practicing</p>
-          <button onClick={handleNewSession} style={styles.newSessionBtn}>
-            <Plus size={18} /> Start First Session
-          </button>
-        </div>
-      ) : (
-        <div style={styles.grid}>
-          {sessions.map((s) => (
-            <div key={s.id} style={styles.card}>
-              <div style={styles.cardTop}>
-                <span style={styles.sessionId}>{s.id.slice(0, 16)}...</span>
-                <div style={{
-                  ...styles.statusBadge,
-                  color: statusColor(s.status),
-                  borderColor: statusColor(s.status) + '33',
-                  backgroundColor: statusColor(s.status) + '0D',
-                }}>
-                  {statusIcon(s.status)}
-                  {s.status}
+        {/* Sessions Grid */}
+        {sessions.length === 0 ? (
+          <div style={styles.emptyState}>
+            <Activity size={48} color="#374151" />
+            <h3 style={styles.emptyTitle}>No interview sessions yet</h3>
+            <p style={styles.emptyText}>Start your first AI voice interview to begin practicing</p>
+            <button onClick={handleNewSession} style={styles.newSessionBtn}>
+              <Plus size={18} /> Start First Session
+            </button>
+          </div>
+        ) : (
+          <div style={styles.grid}>
+            {sessions.map((s) => (
+              <div key={s.id} className="glass-card" style={styles.card}>
+                <div style={styles.cardTop}>
+                  <span style={styles.sessionId}>{s.id.slice(0, 16)}...</span>
+                  <div style={{
+                    ...styles.statusBadge,
+                    color: statusColor(s.status),
+                    borderColor: statusColor(s.status) + '33',
+                    backgroundColor: statusColor(s.status) + '0D',
+                  }}>
+                    {statusIcon(s.status)}
+                    {s.status}
+                  </div>
                 </div>
+                <div style={styles.cardBody}>
+                  <span style={styles.dateLabel}>
+                    {new Date(s.createdAt).toLocaleDateString('en-US', {
+                      month: 'short', day: 'numeric', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleViewDetails(s)}
+                  style={styles.viewBtn}
+                >
+                  {s.status === 'active' ? 'Resume Session' : 'View Report'} <ArrowRight size={14} />
+                </button>
               </div>
-              <div style={styles.cardBody}>
-                <span style={styles.dateLabel}>
-                  {new Date(s.createdAt).toLocaleDateString('en-US', {
-                    month: 'short', day: 'numeric', year: 'numeric',
-                    hour: '2-digit', minute: '2-digit',
-                  })}
-                </span>
-              </div>
-              <button style={styles.viewBtn}>
-                View details <ArrowRight size={14} />
+            ))}
+          </div>
+        )}
+      </main>
+
+      {/* Upgrade Required Modal */}
+      {showUpgradeModal && (
+        <div style={styles.modalOverlay}>
+          <div className="glass-card" style={styles.modalContent}>
+            <ShieldAlert size={48} color="#F59E0B" />
+            <h2 style={styles.modalTitle}>Free Session Limit Reached</h2>
+            <p style={styles.modalText}>
+              You have completed 3/3 free practice sessions on the Starter tier. Upgrade to Pro for unlimited mock interviews!
+            </p>
+            <div style={styles.modalActions}>
+              <button onClick={() => setShowUpgradeModal(false)} style={styles.modalCancelBtn}>
+                Close
+              </button>
+              <button onClick={() => router.push('/billing')} style={styles.modalUpgradeBtn}>
+                <Zap size={16} /> Upgrade to Pro (₹299/mo)
               </button>
             </div>
-          ))}
+          </div>
         </div>
       )}
     </div>
@@ -185,10 +247,76 @@ export default function DashboardPage() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  pageWrapper: {
+    minHeight: '100vh',
+    backgroundColor: '#030712',
+    color: '#F9FAFB',
+    fontFamily: 'Inter, system-ui, sans-serif',
+  },
+  navbar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '1.25rem 2rem',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(11, 15, 25, 0.8)',
+    backdropFilter: 'blur(12px)',
+  },
+  navLogo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.625rem',
+  },
+  navTitle: {
+    fontSize: '1.25rem',
+    fontWeight: 800,
+    letterSpacing: '-0.025em',
+  },
+  navRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+  },
+  userGreeting: {
+    fontSize: '0.875rem',
+    color: '#9CA3AF',
+    fontWeight: 500,
+  },
+  planBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.375rem',
+    backgroundColor: 'rgba(31, 41, 55, 0.6)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '9999px',
+    padding: '0.4rem 0.875rem',
+    color: '#E5E7EB',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  signOutBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.375rem',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    border: '1px solid rgba(239, 68, 68, 0.2)',
+    borderRadius: '0.5rem',
+    padding: '0.4rem 0.875rem',
+    color: '#FCA5A5',
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  container: {
+    maxWidth: '1200px',
+    margin: '0 auto',
+    padding: '2.5rem 1.5rem',
+  },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: '2rem',
     flexWrap: 'wrap',
     gap: '1rem',
@@ -204,21 +332,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.875rem',
     marginTop: '0.25rem',
   },
-  headerRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-  },
-  planBadge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.375rem',
-    padding: '0.5rem 0.875rem',
-    border: '1px solid',
-    borderRadius: '9999px',
-    fontSize: '0.75rem',
-    fontWeight: 600,
-  },
   newSessionBtn: {
     display: 'flex',
     alignItems: 'center',
@@ -232,6 +345,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     cursor: 'pointer',
     fontFamily: 'Inter, system-ui, sans-serif',
+    boxShadow: '0 4px 15px rgba(37, 99, 235, 0.3)',
     transition: 'all 0.2s',
   },
   errorBox: {
@@ -249,15 +363,10 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '1.25rem',
   },
   card: {
-    backgroundColor: 'rgba(17, 24, 39, 0.6)',
-    backdropFilter: 'blur(8px)',
-    border: '1px solid rgba(255, 255, 255, 0.05)',
-    borderRadius: '0.75rem',
     padding: '1.25rem',
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.75rem',
-    transition: 'border-color 0.2s, box-shadow 0.2s',
+    gap: '0.875rem',
   },
   cardTop: {
     display: 'flex',
@@ -295,12 +404,12 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '0.375rem',
-    padding: '0.5rem',
-    backgroundColor: 'transparent',
-    border: '1px solid #1F2937',
+    padding: '0.625rem',
+    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+    border: '1px solid rgba(37, 99, 235, 0.25)',
     borderRadius: '0.375rem',
-    color: '#9CA3AF',
-    fontSize: '0.75rem',
+    color: '#60A5FA',
+    fontSize: '0.8125rem',
     fontWeight: 600,
     cursor: 'pointer',
     fontFamily: 'Inter, system-ui, sans-serif',
@@ -326,5 +435,70 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#6B7280',
     fontSize: '0.875rem',
     maxWidth: '300px',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+    padding: '1rem',
+  },
+  modalContent: {
+    maxWidth: '440px',
+    width: '100%',
+    padding: '2rem',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+  },
+  modalTitle: {
+    fontSize: '1.375rem',
+    fontWeight: 800,
+    marginTop: '1rem',
+    marginBottom: '0.5rem',
+  },
+  modalText: {
+    fontSize: '0.875rem',
+    color: '#9CA3AF',
+    lineHeight: 1.5,
+    marginBottom: '1.5rem',
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '0.75rem',
+    width: '100%',
+  },
+  modalCancelBtn: {
+    flex: 1,
+    padding: '0.625rem',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '0.5rem',
+    color: '#9CA3AF',
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  modalUpgradeBtn: {
+    flex: 2,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.375rem',
+    padding: '0.625rem',
+    backgroundColor: '#8B5CF6',
+    border: 'none',
+    borderRadius: '0.5rem',
+    color: 'white',
+    fontSize: '0.8125rem',
+    fontWeight: 700,
+    cursor: 'pointer',
   },
 };

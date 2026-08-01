@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Zap, AlertTriangle, ArrowLeft, Loader2, Sparkles, Star } from 'lucide-react';
+import { ShieldCheck, Zap, AlertTriangle, ArrowLeft, Loader2, Sparkles, Star, Check } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -14,7 +14,7 @@ export default function BillingPage() {
   const [cancelling, setCancelling] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const getToken = () => localStorage.getItem('token') || '';
+  const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
 
   const fetchUser = async () => {
     const token = getToken();
@@ -36,8 +36,8 @@ export default function BillingPage() {
       }
       const data = await res.json();
       setUser(data.user);
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Error loading profile' });
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Error loading profile' });
     } finally {
       setLoading(false);
     }
@@ -130,9 +130,9 @@ export default function BillingPage() {
       setMessage({ type: 'success', text: 'Congratulations! Your account was upgraded to the Pro plan!' });
       await fetchUser(); // Reload updated plan status
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setMessage({ type: 'error', text: err.message || 'Upgrade simulation failed.' });
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Upgrade simulation failed.' });
     } finally {
       setUpgrading(false);
     }
@@ -160,8 +160,8 @@ export default function BillingPage() {
       setMessage({ type: 'success', text: 'Your Pro plan has been successfully cancelled.' });
       await fetchUser();
 
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Cancellation failed' });
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Cancellation failed' });
     } finally {
       setCancelling(false);
     }
@@ -169,142 +169,116 @@ export default function BillingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#030712] text-white flex items-center justify-center font-sans">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="animate-spin text-indigo-500" size={32} />
-          <p className="text-gray-400 text-sm">Loading subscription details...</p>
-        </div>
+      <div style={styles.loadingWrapper}>
+        <Loader2 size={32} color="#8B5CF6" className="animate-spin" />
+        <p style={styles.loadingText}>Loading subscription details...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#030712] text-white font-sans relative overflow-hidden pb-16">
-      {/* Decorative premium radial gradients */}
-      <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-indigo-900/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-900/10 rounded-full blur-[120px] pointer-events-none" />
-
-      <div className="max-w-5xl mx-auto px-6 pt-8">
+    <div style={styles.pageWrapper}>
+      <div style={styles.container}>
         {/* Back Button */}
-        <button
-          onClick={() => router.push('/')}
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors duration-200 mb-8 group text-sm font-medium"
-        >
-          <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform duration-200" />
-          Back to Dashboard
+        <button onClick={() => router.push('/')} style={styles.backBtn}>
+          <ArrowLeft size={16} /> Back to Dashboard
         </button>
 
         {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-200 to-indigo-200">
-            Elevate Your Preparation
-          </h1>
-          <p className="text-gray-400 max-w-xl mx-auto text-base">
-            Select the subscription plan that aligns with your interview targets and practice limits.
-          </p>
+        <div style={styles.header}>
+          <h1 style={styles.title}>Elevate Your Preparation</h1>
+          <p style={styles.subtitle}>Select the subscription plan that aligns with your interview targets and practice limits.</p>
         </div>
 
-        {/* Message Alert Banner */}
+        {/* Message Banner */}
         {message && (
-          <div className={`p-4 rounded-xl border mb-8 flex items-start gap-3 backdrop-blur-md transition-all duration-300 max-w-2xl mx-auto ${
-            message.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-              : 'bg-red-500/10 border-red-500/30 text-red-300'
-          }`}>
-            {message.type === 'success' ? (
-              <ShieldCheck className="shrink-0 mt-0.5" size={18} />
-            ) : (
-              <AlertTriangle className="shrink-0 mt-0.5" size={18} />
-            )}
-            <p className="text-sm font-medium leading-relaxed">{message.text}</p>
+          <div style={{
+            ...styles.alertBanner,
+            backgroundColor: message.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+            borderColor: message.type === 'success' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)',
+            color: message.type === 'success' ? '#6EE7B7' : '#FCA5A5',
+          }}>
+            {message.type === 'success' ? <ShieldCheck size={18} /> : <AlertTriangle size={18} />}
+            <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{message.text}</span>
           </div>
         )}
 
-        {/* Pricing Cards Grid */}
-        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto mb-12">
-          
-          {/* Card 1: Free Tier */}
-          <div className="bg-[#0b0f19]/80 border border-gray-800 rounded-2xl p-8 relative flex flex-col justify-between backdrop-blur-lg">
+        {/* Cards Grid */}
+        <div style={styles.grid}>
+          {/* Card 1: Free Starter */}
+          <div className="glass-card" style={styles.card}>
             {user?.plan === 'free' && (
-              <span className="absolute top-4 right-4 bg-gray-800 text-gray-300 border border-gray-700 text-xs px-3 py-1 rounded-full font-semibold">
-                Your Current Plan
-              </span>
+              <span style={styles.currentBadge}>Current Plan</span>
             )}
             <div>
-              <h3 className="text-xl font-bold mb-2">Free Starter</h3>
-              <p className="text-gray-400 text-sm mb-6">Perfect to explore and run preliminary test evaluations.</p>
-              
-              <div className="mb-6">
-                <span className="text-4xl font-extrabold">₹0</span>
-                <span className="text-gray-500 text-sm ml-2">/ month</span>
+              <h3 style={styles.planName}>Free Starter</h3>
+              <p style={styles.planDesc}>Perfect to explore and run preliminary test evaluations.</p>
+
+              <div style={styles.priceRow}>
+                <span style={styles.priceNumber}>₹0</span>
+                <span style={styles.pricePeriod}>/ month</span>
               </div>
 
-              <ul className="space-y-4 mb-8">
-                <li className="flex items-center gap-3 text-sm text-gray-300">
-                  <CheckCircleIcon />
-                  3 practice sessions total
+              <ul style={styles.featureList}>
+                <li style={styles.featureItem}>
+                  <Check size={16} color="#10B981" /> 3 practice sessions total
                 </li>
-                <li className="flex items-center gap-3 text-sm text-gray-300">
-                  <CheckCircleIcon />
-                  Conversational Turn loop
+                <li style={styles.featureItem}>
+                  <Check size={16} color="#10B981" /> Real-time Speech-to-Text & LLM
                 </li>
-                <li className="flex items-center gap-3 text-sm text-gray-300">
-                  <CheckCircleIcon />
-                  Basic post-session reports
+                <li style={styles.featureItem}>
+                  <Check size={16} color="#10B981" /> Basic performance scorecards
                 </li>
-                <li className="flex items-center gap-3 text-sm text-gray-500 line-through">
+                <li style={{ ...styles.featureItem, color: '#4B5563', textDecoration: 'line-through' }}>
                   Pro-tier custom RAG prompts
                 </li>
               </ul>
             </div>
 
-            <button
-              disabled
-              className="w-full py-3 px-4 rounded-xl border border-gray-800 bg-gray-900/50 text-gray-500 text-sm font-semibold transition-all duration-200"
-            >
-              {user?.plan === 'free' ? 'Currently Active' : 'Basic Tier'}
+            <button disabled style={styles.disabledPlanBtn}>
+              {user?.plan === 'free' ? 'Currently Active' : 'Starter Tier'}
             </button>
           </div>
 
           {/* Card 2: Pro Tier */}
-          <div className="bg-[#0f1424]/90 border-2 border-indigo-500 rounded-2xl p-8 relative flex flex-col justify-between shadow-lg shadow-indigo-500/5 backdrop-blur-lg">
+          <div className="glass-card" style={{
+            ...styles.card,
+            borderColor: '#8B5CF6',
+            boxShadow: '0 8px 32px rgba(139, 92, 246, 0.2)',
+          }}>
             {user?.plan === 'paid' && (
-              <span className="absolute top-4 right-4 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs px-3 py-1 rounded-full font-semibold flex items-center gap-1">
-                <Star size={10} className="fill-indigo-300" /> Active Plan
+              <span style={{ ...styles.currentBadge, backgroundColor: 'rgba(139, 92, 246, 0.2)', color: '#C4B5FD', borderColor: 'rgba(139, 92, 246, 0.4)' }}>
+                <Star size={12} color="#A78BFA" /> Active Plan
               </span>
             )}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white text-xs px-4 py-1 rounded-full font-bold uppercase tracking-wider flex items-center gap-1 shadow-md shadow-indigo-500/10">
+            <div style={styles.recommendedTag}>
               <Sparkles size={12} /> Recommended
             </div>
-            
+
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-xl font-bold text-indigo-300">Pro Interviewer</h3>
-                <Zap className="fill-amber-400 text-amber-400" size={16} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                <h3 style={{ ...styles.planName, color: '#C4B5FD' }}>Pro Interviewer</h3>
+                <Zap size={18} color="#F59E0B" />
               </div>
-              <p className="text-gray-400 text-sm mb-6">Unlimited mock sessions with professional comprehensive RAG pipelines.</p>
-              
-              <div className="mb-6">
-                <span className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-200 to-white">₹299</span>
-                <span className="text-gray-500 text-sm ml-2">/ month</span>
+              <p style={styles.planDesc}>Unlimited mock sessions with professional semantic RAG search & deep scoring.</p>
+
+              <div style={styles.priceRow}>
+                <span style={{ ...styles.priceNumber, color: '#A78BFA' }}>₹299</span>
+                <span style={styles.pricePeriod}>/ month</span>
               </div>
 
-              <ul className="space-y-4 mb-8">
-                <li className="flex items-center gap-3 text-sm text-gray-200">
-                  <CheckCircleIcon className="text-indigo-400" />
-                  <strong>Unlimited</strong> practice sessions
+              <ul style={styles.featureList}>
+                <li style={{ ...styles.featureItem, color: '#F3F4F6' }}>
+                  <Check size={16} color="#8B5CF6" /> <strong>Unlimited</strong> practice sessions
                 </li>
-                <li className="flex items-center gap-3 text-sm text-gray-200">
-                  <CheckCircleIcon className="text-indigo-400" />
-                  Advanced pressure follow-up RAG
+                <li style={{ ...styles.featureItem, color: '#F3F4F6' }}>
+                  <Check size={16} color="#8B5CF6" /> Adaptive follow-up AI interviewer
                 </li>
-                <li className="flex items-center gap-3 text-sm text-gray-200">
-                  <CheckCircleIcon className="text-indigo-400" />
-                  Deep Technical / Behavior evaluations
+                <li style={{ ...styles.featureItem, color: '#F3F4F6' }}>
+                  <Check size={16} color="#8B5CF6" /> Deep technical & behavioral evaluation
                 </li>
-                <li className="flex items-center gap-3 text-sm text-gray-200">
-                  <CheckCircleIcon className="text-indigo-400" />
-                  Immediate background job processing
+                <li style={{ ...styles.featureItem, color: '#F3F4F6' }}>
+                  <Check size={16} color="#8B5CF6" /> Priority background job processing
                 </li>
               </ul>
             </div>
@@ -313,59 +287,202 @@ export default function BillingPage() {
               <button
                 onClick={handleCancelSubscription}
                 disabled={cancelling}
-                className="w-full py-3 px-4 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2"
+                style={styles.cancelBtn}
               >
-                {cancelling ? (
-                  <>
-                    <Loader2 className="animate-spin" size={16} />
-                    Cancelling...
-                  </>
-                ) : (
-                  'Cancel Subscription'
-                )}
+                {cancelling ? 'Cancelling...' : 'Cancel Subscription'}
               </button>
             ) : (
               <button
                 onClick={handleSimulateUpgrade}
                 disabled={upgrading}
-                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-bold shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.01] active:scale-[0.99] transition-all duration-200 flex items-center justify-center gap-2"
+                style={styles.upgradeBtn}
               >
-                {upgrading ? (
-                  <>
-                    <Loader2 className="animate-spin" size={16} />
-                    Processing Checkout...
-                  </>
-                ) : (
-                  'Simulate Payment & Upgrade'
-                )}
+                {upgrading ? 'Processing Upgrade...' : 'Upgrade to Pro (₹299)'}
               </button>
             )}
           </div>
-
         </div>
-
-        {/* Details Footer Grid */}
-        <div className="bg-[#0b0f19]/40 border border-gray-800/80 rounded-2xl p-6 max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 backdrop-blur-md">
-          <div className="text-left">
-            <h4 className="text-sm font-bold text-gray-300 mb-1">Frequently Asked Questions</h4>
-            <p className="text-xs text-gray-400">
-              Is there a credit card required for standard mock simulation? No! Everything can be verified out-of-the-box!
-            </p>
-          </div>
-          <div className="text-right text-xs text-gray-500 font-medium">
-            Payment processing is cryptographically validated and secured.
-          </div>
-        </div>
-
       </div>
     </div>
   );
 }
 
-function CheckCircleIcon({ className = 'text-emerald-400' }) {
-  return (
-    <svg className={`shrink-0 ${className}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
-}
+const styles: Record<string, React.CSSProperties> = {
+  pageWrapper: {
+    minHeight: '100vh',
+    backgroundColor: '#030712',
+    color: '#F9FAFB',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    paddingBottom: '4rem',
+  },
+  container: {
+    maxWidth: '900px',
+    margin: '0 auto',
+    padding: '2.5rem 1.5rem',
+  },
+  loadingWrapper: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '80vh',
+    gap: '1rem',
+  },
+  loadingText: {
+    color: '#9CA3AF',
+    fontSize: '0.875rem',
+  },
+  backBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.375rem',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '0.5rem',
+    padding: '0.5rem 0.875rem',
+    color: '#9CA3AF',
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    marginBottom: '2rem',
+  },
+  header: {
+    textAlign: 'center',
+    marginBottom: '3rem',
+  },
+  title: {
+    fontSize: '2.25rem',
+    fontWeight: 800,
+    letterSpacing: '-0.025em',
+    marginBottom: '0.5rem',
+  },
+  subtitle: {
+    color: '#9CA3AF',
+    fontSize: '1rem',
+    maxWidth: '500px',
+    margin: '0 auto',
+  },
+  alertBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    padding: '1rem',
+    borderRadius: '0.75rem',
+    border: '1px solid',
+    marginBottom: '2rem',
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+    gap: '2rem',
+  },
+  card: {
+    position: 'relative',
+    padding: '2rem',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    gap: '2rem',
+  },
+  currentBadge: {
+    position: 'absolute',
+    top: '1rem',
+    right: '1rem',
+    backgroundColor: 'rgba(31, 41, 55, 0.8)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    padding: '0.25rem 0.625rem',
+    borderRadius: '9999px',
+    fontSize: '0.6875rem',
+    fontWeight: 600,
+    color: '#D1D5DB',
+  },
+  recommendedTag: {
+    position: 'absolute',
+    top: 0,
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    backgroundColor: '#8B5CF6',
+    color: 'white',
+    fontSize: '0.6875rem',
+    fontWeight: 700,
+    padding: '0.25rem 0.75rem',
+    borderRadius: '9999px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.25rem',
+  },
+  planName: {
+    fontSize: '1.25rem',
+    fontWeight: 800,
+  },
+  planDesc: {
+    fontSize: '0.8125rem',
+    color: '#9CA3AF',
+    marginTop: '0.25rem',
+    marginBottom: '1.5rem',
+  },
+  priceRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    marginBottom: '1.5rem',
+  },
+  priceNumber: {
+    fontSize: '2.5rem',
+    fontWeight: 800,
+  },
+  pricePeriod: {
+    fontSize: '0.875rem',
+    color: '#6B7280',
+    marginLeft: '0.375rem',
+  },
+  featureList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.875rem',
+    listStyle: 'none',
+  },
+  featureItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.625rem',
+    fontSize: '0.875rem',
+    color: '#D1D5DB',
+  },
+  disabledPlanBtn: {
+    width: '100%',
+    padding: '0.75rem',
+    backgroundColor: 'rgba(31, 41, 55, 0.4)',
+    border: '1px solid rgba(255, 255, 255, 0.05)',
+    borderRadius: '0.5rem',
+    color: '#6B7280',
+    fontSize: '0.875rem',
+    fontWeight: 600,
+    cursor: 'not-allowed',
+  },
+  upgradeBtn: {
+    width: '100%',
+    padding: '0.75rem',
+    backgroundColor: '#8B5CF6',
+    border: 'none',
+    borderRadius: '0.5rem',
+    color: 'white',
+    fontSize: '0.875rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)',
+    transition: 'all 0.2s',
+  },
+  cancelBtn: {
+    width: '100%',
+    padding: '0.75rem',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    border: '1px solid rgba(239, 68, 68, 0.3)',
+    borderRadius: '0.5rem',
+    color: '#FCA5A5',
+    fontSize: '0.875rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+};
