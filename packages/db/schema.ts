@@ -2,7 +2,7 @@ import { customType, pgTable, text, timestamp, integer, index } from 'drizzle-or
 
 export const vector = customType<{ data: number[] }>({
   dataType() {
-    return 'vector(1536)';
+    return 'vector';
   },
 });
 

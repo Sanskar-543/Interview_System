@@ -84,14 +84,11 @@ Open the `.env` file and populate:
 
 For a detailed review of each key, check the [Required API Keys Guide](file:///home/sanskars/Codezz/DEV/Interview_System/required_keys.md).
 
-### 4. Database Migrations
-Generate drizzle schema definitions and push them directly to your Postgres instance:
+### 4. Database Migrations & Setup
+Run automated database setup and schema migrations (enables `pgvector` and creates all required tables):
 ```bash
-# Generate SQL migrations
-pnpm --filter @ai-interviewer/db db:generate
-
-# Push schema directly to development database
-pnpm --filter @ai-interviewer/db db:push
+# Apply migrations to target Postgres database
+pnpm --filter @ai-interviewer/db db:migrate
 ```
 
 ### 5. Running the Monorepo
