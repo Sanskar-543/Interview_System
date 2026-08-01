@@ -1,6 +1,6 @@
 import { Router, IRouter, Response, NextFunction } from 'express';
 import crypto from 'node:crypto';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, desc, asc } from 'drizzle-orm';
 import { db, sessions, users, turns } from '@ai-interviewer/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { AppError } from '../errors/AppError';
@@ -54,7 +54,7 @@ router.get('/', async (req, res: Response, next: NextFunction) => {
 
     const userSessions = await db.select().from(sessions)
       .where(eq(sessions.userId, userId))
-      .orderBy(sessions.createdAt);
+      .orderBy(desc(sessions.createdAt));
 
     res.json({ sessions: userSessions });
   } catch (err) {
@@ -82,7 +82,7 @@ router.get('/:id', async (req, res: Response, next: NextFunction) => {
 
     const sessionTurns = await db.select().from(turns)
       .where(eq(turns.sessionId, session.id))
-      .orderBy(turns.turnIndex);
+      .orderBy(asc(turns.turnIndex));
 
     res.json({ session: { ...session, turns: sessionTurns } });
   } catch (err) {

@@ -5,7 +5,18 @@
 [![Express](https://img.shields.io/badge/Express-4.x-lightgrey.svg)](https://expressjs.com/)
 [![Database](https://img.shields.io/badge/Neon-Postgres-00e676.svg)](https://neon.tech/)
 
-A premium, high-performance, real-time AI voice interviewer platform built using a Node.js and Next.js monorepo architecture. The platform allows candidates to conduct mock interviews via live bidirectional audio streaming, dynamically generates follow-up questions using advanced LLMs (via OpenRouter), fetches question banks via semantic RAG search, processes evaluations in the background, and handles SaaS monetization through a simulated Razorpay subscription portal.
+A premium, high-performance, real-time AI voice interviewer platform built using a Node.js and Next.js monorepo architecture. The platform allows candidates to conduct mock interviews via a **Zoom/Google Meet style video call interface**, streams bidirectional audio in real time, dynamically generates follow-up questions using advanced LLMs (via OpenRouter), fetches role-specific question banks via semantic RAG search (`pgvector`), processes evaluations asynchronously, and handles SaaS monetization through a simulated Razorpay subscription portal.
+
+---
+
+## 🌐 Live Production Deployments
+
+| Service Component | Cloud Provider | Live Production URL | Description / Endpoints |
+|---|---|---|---|
+| **Web Frontend** | **Vercel** | [https://interview-system-web.vercel.app](https://interview-system-web.vercel.app) | Next.js 14 Web App with Zoom/Meet video call UI |
+| **API Gateway** | **Render** | [https://interview-gateway-latest.onrender.com](https://interview-gateway-latest.onrender.com) | Express REST API Gateway & JWT Auth |
+| **Voice Service** | **Render** | `wss://interview-voice-1lks.onrender.com` | Bidirectional WebSocket Real-Time Voice Loop |
+| **Eval Worker** | **Render** | [https://interview-worker-latest-r8sx.onrender.com](https://interview-worker-latest-r8sx.onrender.com) | BullMQ Async Evaluation Engine |
 
 ---
 
@@ -14,8 +25,10 @@ A premium, high-performance, real-time AI voice interviewer platform built using
 The repository is structured as a `pnpm` workspace containing independent microservices and shared library packages:
 
 ### Applications (`apps/`)
-- **[web](file:///home/sanskars/Codezz/DEV/Interview_System/apps/web)**: Next.js 14 Web App featuring a glassmorphic mock interview room, realtime candidate audio recording, transcription feed logs, latency metrics, and a Razorpay billing portal.
-- **[gateway](file:///home/sanskars/Codezz/DEV/Interview_System/apps/gateway)**: Express API Gateway serving auth routes, session routing, user profiles, evaluations, rate limiting, and raw payload verification for Razorpay webhooks.
+- **[web](file:///home/sanskars/Codezz/DEV/Interview_System/apps/web)**: Next.js 14 Web App featuring:
+  - **Zoom / Google Meet Video-Call Interface**: ~70% viewport interviewer tile, animated audio-reactive speaking pulse rings, picture-in-picture (PIP) candidate tile with real-time mic volume equalizer, floating glassmorphic control bar, and collapsible transcript drawer.
+  - **Dashboard & Session Manager**: Active session resume, completed report viewer, free-tier usage tracking (`3/3 sessions`), and Razorpay subscription upgrade portal.
+- **[gateway](file:///home/sanskars/Codezz/DEV/Interview_System/apps/gateway)**: Express API Gateway serving auth routes (`/signup`, `/login`), session routing, user profiles, evaluations, CORS dynamic origin matching, rate limiting, and raw payload verification for Razorpay webhooks.
 - **[voice-service](file:///home/sanskars/Codezz/DEV/Interview_System/apps/voice-service)**: Bidirectional WebSocket server hosting the real-time audio orchestration loop:
   - **STT**: Streams candidate audio chunks directly to Deepgram.
   - **Context Assembler**: Merges Redis history buffers with postgres `pgvector` RAG context.
@@ -27,7 +40,7 @@ The repository is structured as a `pnpm` workspace containing independent micros
 
 ### Shared Packages (`packages/`)
 - **[shared](file:///home/sanskars/Codezz/DEV/Interview_System/packages/shared)**: Core TS type definitions (`Turn`, `Session`, `WSMessage`), Pino structured logger, and `@t3-oss/env-core` schema validators.
-- **[db](file:///home/sanskars/Codezz/DEV/Interview_System/packages/db)**: Drizzle ORM configuration, schema declarations (Users, Sessions, Turns, Reports, Knowledge Base), and database client.
+- **[db](file:///home/sanskars/Codezz/DEV/Interview_System/packages/db)**: Drizzle ORM configuration, schema declarations (Users, Sessions, Turns, Reports, Knowledge Base), standalone migration script (`pnpm db:migrate`), and database client.
 - **[rag](file:///home/sanskars/Codezz/DEV/Interview_System/packages/rag)**: Nomic Embed API client (`nomic-embed-text-v1.5`) and cosine similarity matching on `pgvector`.
 - **[queue](file:///home/sanskars/Codezz/DEV/Interview_System/packages/queue)**: Shared Redis connection client and BullMQ task definitions.
 
@@ -37,16 +50,16 @@ The repository is structured as a `pnpm` workspace containing independent micros
 
 ```mermaid
 graph TD
-    Client[Next.js Client] <-->|WS Bidirectional Audio| VS[Voice Service]
-    Client -->|REST API Requests| GW[Express API Gateway]
-    GW -->|REST / JWT Auth| DB[(Neon Postgres)]
+    Client[Next.js Client - Vercel] <-->|WS Bidirectional Audio| VS[Voice Service - Render]
+    Client -->|REST API Requests| GW[Express API Gateway - Render]
+    GW -->|REST / JWT Auth| DB[(Neon Postgres + pgvector)]
     GW -->|WebSocket Proxy Upgrade| VS
     
     VS -->|Redis WAL / cb state| Redis[(Redis / Upstash)]
     VS -->|pgvector Cosine Search| RAG[RAG Service]
     VS -->|Add Jobs| Queue[BullMQ / Redis]
     
-    Queue -->|Consume| Worker[Background Worker]
+    Queue -->|Consume| Worker[Background Worker - Render]
     Worker -->|Create Score Reports| DB
 ```
 
