@@ -14,9 +14,30 @@ import { billingRouter, billingWebhookHandler } from './routes/billing';
 const app = express();
 const server = createServer(app);
 
-// CORS — allow Vercel frontend origin
+// CORS — allow Vercel frontend origin & localhost
 app.use(cors({
-  origin: env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+
+    const configuredOrigins = env.CORS_ORIGIN
+      ? env.CORS_ORIGIN.split(',').map((o) => o.trim().replace(/\/$/, ''))
+      : [];
+
+    const normalizedOrigin = origin.replace(/\/$/, '');
+
+    if (
+      configuredOrigins.includes(normalizedOrigin) ||
+      configuredOrigins.includes('*') ||
+      normalizedOrigin.endsWith('.vercel.app') ||
+      normalizedOrigin.startsWith('http://localhost')
+    ) {
+      return callback(null, true);
+    }
+
+    logger.warn({ origin }, 'Gateway CORS rejected origin');
+    return callback(null, false);
+  },
   credentials: true,
 }));
 
