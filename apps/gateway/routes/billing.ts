@@ -18,7 +18,7 @@ billingRouter.post('/subscribe', async (req, res: Response, next: NextFunction) 
     const { id: userId } = authReq.user!;
 
     // MANDATORY CORRECTION 2: Strict production gating
-    if (!env.RAZORPAY_KEY_ID && env.NODE_ENV === 'production') {
+    if ((!env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_ID) && (env.NODE_ENV === 'production' || process.env.NODE_ENV === 'production')) {
       throw new AppError('BILLING_MISCONFIGURED', 'Razorpay keys missing in production', 500);
     }
 

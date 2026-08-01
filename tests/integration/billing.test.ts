@@ -78,10 +78,13 @@ test('Billing & Webhook Integration Suite', async (t) => {
   });
 
   await t.test('1. Gated Sandbox: missing Razorpay key in production throws BILLING_MISCONFIGURED', async () => {
-    const originalNodeEnv = env.NODE_ENV;
-    const originalRazorpayKey = env.RAZORPAY_KEY_ID;
+    selectResult = [{ id: 'usr_test_1', plan: 'free', sessionCount: 0 }];
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalRazorpayKey = process.env.RAZORPAY_KEY_ID;
 
     // Simulate Production with missing keys
+    process.env.NODE_ENV = 'production';
+    delete process.env.RAZORPAY_KEY_ID;
     (env as any).NODE_ENV = 'production';
     (env as any).RAZORPAY_KEY_ID = undefined;
 
@@ -94,6 +97,8 @@ test('Billing & Webhook Integration Suite', async (t) => {
     });
 
     // Restore env values
+    process.env.NODE_ENV = originalNodeEnv;
+    process.env.RAZORPAY_KEY_ID = originalRazorpayKey;
     (env as any).NODE_ENV = originalNodeEnv;
     (env as any).RAZORPAY_KEY_ID = originalRazorpayKey;
 
