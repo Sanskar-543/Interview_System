@@ -42,6 +42,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build shared packages
+        run: pnpm --filter "./packages/**" build
+
       - name: Run Typecheck (Shared)
         run: pnpm tsc --noEmit --project tsconfig.json
         working-directory: packages/shared
