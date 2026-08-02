@@ -10,6 +10,7 @@ COPY apps/gateway/package.json ./apps/gateway/
 COPY apps/voice-service/package.json ./apps/voice-service/
 COPY apps/worker/package.json ./apps/worker/
 COPY packages/db/package.json ./packages/db/
+COPY packages/eval/package.json ./packages/eval/
 COPY packages/queue/package.json ./packages/queue/
 COPY packages/rag/package.json ./packages/rag/
 COPY packages/shared/package.json ./packages/shared/

@@ -69,6 +69,9 @@ importers:
       '@ai-interviewer/db':
         specifier: file:../../packages/db
         version: link:../../packages/db
+      '@ai-interviewer/eval':
+        specifier: file:../../packages/eval
+        version: link:../../packages/eval
       '@ai-interviewer/shared':
         specifier: file:../../packages/shared
         version: link:../../packages/shared
@@ -145,6 +148,9 @@ importers:
       '@ai-interviewer/db':
         specifier: file:../../packages/db
         version: link:../../packages/db
+      '@ai-interviewer/eval':
+        specifier: file:../../packages/eval
+        version: link:../../packages/eval
       '@ai-interviewer/queue':
         specifier: file:../../packages/queue
         version: link:../../packages/queue
@@ -179,6 +185,18 @@ importers:
       drizzle-kit:
         specifier: ^0.21.4
         version: 0.21.4
+
+  packages/eval:
+    dependencies:
+      '@ai-interviewer/db':
+        specifier: file:../../packages/db
+        version: link:../db
+      '@ai-interviewer/shared':
+        specifier: file:../../packages/shared
+        version: link:../shared
+      drizzle-orm:
+        specifier: ^0.30.10
+        version: 0.30.10(@neondatabase/serverless@0.9.5)(@types/pg@8.20.0)(@types/react@18.3.29)(pg@8.21.0)(react@18.3.1)
 
   packages/queue:
     dependencies:

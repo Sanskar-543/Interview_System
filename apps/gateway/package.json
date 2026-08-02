@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ai-interviewer/db": "file:../../packages/db",
+    "@ai-interviewer/eval": "file:../../packages/eval",
     "@ai-interviewer/shared": "file:../../packages/shared",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

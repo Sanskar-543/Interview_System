@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, reports, sessions } from '@ai-interviewer/db';
 import { authenticateToken } from '../middleware/auth.js';
 import { AppError } from '../errors/AppError.js';
-import { processEvaluationJob } from '../../worker/jobs/eval.js';
+import { processEvaluationJob } from '@ai-interviewer/eval';
 const router = Router();
 // All report routes require auth
 router.use(authenticateToken);
