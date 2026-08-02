@@ -121,6 +121,8 @@ db.insert = function(table) {
           plan: rec.plan || 'free',
           sessionCount: rec.sessionCount !== undefined ? rec.sessionCount : 0,
           status: rec.status || 'active',
+          emailVerified: rec.emailVerified,
+          provider: rec.provider,
           userId: rec.userId,
           sessionId: rec.sessionId,
           turnIndex: rec.turnIndex,

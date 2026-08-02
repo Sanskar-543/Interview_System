@@ -1,4 +1,4 @@
-import { env, logger } from '@ai-interviewer/shared';
+import { env, logger, AppError } from '@ai-interviewer/shared';
 export async function getEmbedding(text) {
     try {
         const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
@@ -15,17 +15,20 @@ export async function getEmbedding(text) {
         if (!response.ok) {
             const errorText = await response.text().catch(() => '');
             logger.warn({ status: response.status, errorText }, 'RAG: OpenRouter embedding call returned non-200');
-            return [];
+            throw new AppError('EMBEDDING_FAILED', 'Could not generate embedding', 500);
         }
         const data = await response.json();
         if (!data.data || !data.data[0] || !data.data[0].embedding) {
             logger.warn('RAG: Invalid response structure from OpenRouter embedding API');
-            return [];
+            throw new AppError('EMBEDDING_FAILED', 'Could not generate embedding', 500);
         }
         return data.data[0].embedding;
     }
     catch (err) {
+        if (err instanceof AppError) {
+            throw err;
+        }
         logger.error({ err, text: text.slice(0, 100) }, 'RAG: Embedding generation exception');
-        return [];
+        throw new AppError('EMBEDDING_FAILED', 'Could not generate embedding', 500);
     }
 }

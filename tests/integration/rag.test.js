@@ -134,10 +134,7 @@ test('CircuitBreaker Fallbacks: Exercises all four levels explicitly', async () 
       }
       return 'Primary LLM Response';
     }
-    if (model.includes('gemini') || model.includes('llama') || model.includes('mistral')) {
-      throw new Error(`Backup Model ${model} Failed`);
-    }
-    return `Backup LLM Response: ${model}`;
+    throw new Error(`Backup Model ${model} Failed`);
   };
 
   try {

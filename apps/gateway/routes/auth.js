@@ -69,7 +69,57 @@ const handleSignupInit = async (req, res, next) => {
     }
 };
 router.post('/signup-init', handleSignupInit);
-router.post('/signup', handleSignupInit);
+// POST /api/v1/auth/signup — direct registration (creates a fully verified user in one step)
+router.post('/signup', async (req, res, next) => {
+    try {
+        const { name, email, password } = req.body;
+        if (!name || !email || !password) {
+            throw new AppError('VALIDATION_ERROR', 'name, email and password are required', 400);
+        }
+        if (password.length < 8) {
+            throw new AppError('VALIDATION_ERROR', 'Password must be at least 8 characters long', 400);
+        }
+        const normalizedEmail = email.trim().toLowerCase();
+        const [existing] = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
+        if (existing && existing.emailVerified && existing.passwordHash) {
+            throw new AppError('CONFLICT', 'Email is already registered. Please sign in instead.', 409);
+        }
+        const passwordHash = await bcrypt.hash(password, 12);
+        if (existing) {
+            const [updatedUser] = await db.update(users)
+                .set({
+                name: name.trim(),
+                passwordHash,
+                emailVerified: true,
+                updatedAt: new Date(),
+            })
+                .where(eq(users.id, existing.id))
+                .returning();
+            logger.info({ userId: updatedUser.id, email: updatedUser.email }, 'Auth: User completed direct signup');
+            return res.status(201).json({
+                user: { id: updatedUser.id, email: updatedUser.email, name: updatedUser.name, plan: updatedUser.plan },
+            });
+        }
+        const id = `usr_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+        const [newUser] = await db.insert(users).values({
+            id,
+            email: normalizedEmail,
+            name: name.trim(),
+            passwordHash,
+            plan: 'free',
+            sessionCount: 0,
+            emailVerified: true,
+            provider: 'credentials',
+        }).returning();
+        logger.info({ userId: newUser.id, email: newUser.email }, 'Auth: User registered via direct signup');
+        res.status(201).json({
+            user: { id: newUser.id, email: newUser.email, name: newUser.name, plan: newUser.plan },
+        });
+    }
+    catch (err) {
+        next(err);
+    }
+});
 // 2. POST /api/v1/auth/verify-email (Step 2: Validates 6-Digit OTP)
 router.post('/verify-email', async (req, res, next) => {
     try {
