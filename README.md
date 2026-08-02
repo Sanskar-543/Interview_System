@@ -14,7 +14,7 @@ A premium, high-performance, real-time AI voice interviewer platform built using
 
 | Service Component | Cloud Provider | Live Production URL | Description / Endpoints |
 |---|---|---|---|
-| **Web Frontend** | **Vercel** | [https://interview-system-web.vercel.app](https://interview-system-web.vercel.app) | Vite + React SPA with Zoom/Meet video call UI |
+| **Web Frontend** | **Vercel** | [https://interview-system-web-js-pearl.vercel.app](https://interview-system-web-js-pearl.vercel.app) | Vite + React SPA with Zoom/Meet video call UI |
 | **API Gateway** | **Render** | [https://interview-gateway-latest.onrender.com](https://interview-gateway-latest.onrender.com) | Express REST API Gateway & JWT Auth |
 | **Voice Service** | **Render** | `wss://interview-voice-1lks.onrender.com` | Bidirectional WebSocket Real-Time Voice Loop |
 | **Eval Worker** | **Render** | [https://interview-worker-latest-r8sx.onrender.com](https://interview-worker-latest-r8sx.onrender.com) | BullMQ Async Evaluation Engine |
