@@ -1,0 +1,25 @@
+{
+  "name": "@ai-interviewer/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "build": "echo 'No build step needed (plain JS ESM)'",
+    "test:integration": "node --test ../../tests/integration/session.test.js"
+  },
+  "dependencies": {
+    "@ai-interviewer/db": "file:../../packages/db",
+    "@ai-interviewer/shared": "file:../../packages/shared",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "drizzle-orm": "^0.30.10",
+    "express": "^4.19.2",
+    "http-proxy": "^1.18.1",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "pdf-parse": "^2.4.5"
+  }
+}

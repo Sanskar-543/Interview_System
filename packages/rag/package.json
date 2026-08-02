@@ -1,0 +1,15 @@
+{
+  "name": "@ai-interviewer/rag",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "scripts": {
+    "build": "echo 'No build step needed (plain JS ESM)'"
+  },
+  "dependencies": {
+    "@ai-interviewer/db": "file:../db",
+    "@ai-interviewer/shared": "file:../shared",
+    "drizzle-orm": "^0.30.10"
+  }
+}

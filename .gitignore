@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+.next/
+.turbo/
+coverage/
+
+# Antigravity skills
+.agents/skills/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+pnpm-debug.log*
+secrets/
+.env
+e.txt
+test_results*.txt

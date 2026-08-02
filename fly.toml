@@ -1,0 +1,9 @@
+app = "ai-interviewer-voice"
+primary_region = "bom"
+
+[http_service]
+  internal_port = 5001
+  force_https = true
+  auto_start_machines = true
+  auto_stop_machines = true
+  min_machines_running = 0

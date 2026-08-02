@@ -1,0 +1,15 @@
+{
+  "name": "@ai-interviewer/queue",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./jobs.js",
+  "scripts": {
+    "build": "echo 'No build step needed (plain JS ESM)'"
+  },
+  "dependencies": {
+    "@ai-interviewer/shared": "file:../shared",
+    "bullmq": "^5.8.3",
+    "ioredis": "^5.4.1"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "name": "ai-interviewer-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "description": "AI Mock Interviewer Platform Monorepo",
+  "type": "module",
+  "scripts": {
+    "test:integration": "node --test tests/integration/session.test.js",
+    "test:billing": "node --test tests/integration/billing.test.js",
+    "test:rag": "node --test tests/integration/rag.test.js",
+    "test:all-integration": "node --test tests/integration/*.test.js",
+    "test:integration:save": "node --test tests/integration/session.test.js > test_results_ansi.txt",
+    "inspect": "node tests/integration/inspectTable.js",
+    "test:unit": "node --test tests/unit/*.test.js"
+  },
+  "dependencies": {
+    "@ai-interviewer/db": "file:packages/db",
+    "@ai-interviewer/queue": "file:packages/queue",
+    "@ai-interviewer/rag": "file:packages/rag",
+    "@ai-interviewer/shared": "file:packages/shared",
+    "@neondatabase/serverless": "^0.9.3",
+    "bcryptjs": "^2.4.3",
+    "drizzle-orm": "^0.30.10",
+    "express": "^4.19.2",
+    "http-proxy": "^1.18.1",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.11.5",
+    "pino": "^9.1.0",
+    "pino-pretty": "^11.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.21.4",
+    "vitest": "^1.6.0"
+  }
+}
