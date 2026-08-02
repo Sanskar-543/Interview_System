@@ -29,7 +29,7 @@ The repository is structured as a `pnpm` workspace containing independent micros
 - **[web](file:///home/sanskars/Codezz/DEV/Interview_System_js/apps/web)**: Vite + React SPA (`react-router-dom`) featuring:
   - **Zoom / Google Meet Video-Call Interface**: ~70% viewport interviewer tile, animated audio-reactive speaking pulse rings, picture-in-picture (PIP) candidate tile with real-time mic volume equalizer, floating glassmorphic control bar, and collapsible transcript drawer.
   - **Dashboard & Session Manager**: Active session resume, completed report viewer, free-tier usage tracking (`3/3 sessions`), and Razorpay subscription upgrade portal.
-- **[gateway](file:///home/sanskars/Codezz/DEV/Interview_System_js/apps/gateway)**: Express API Gateway serving auth routes (`/signup`, `/login`), session routing, user profiles, evaluations, CORS dynamic origin matching, rate limiting, and raw payload verification for Razorpay webhooks.
+- **[gateway](file:///home/sanskars/Codezz/DEV/Interview_System_js/apps/gateway)**: Express API Gateway serving auth routes, session routing, user profiles, evaluations, CORS dynamic origin matching, rate limiting, and raw payload verification for Razorpay webhooks. Two signup flows are supported: **direct registration** via `POST /api/v1/auth/signup` (validates + hashes the password, creates a verified user, and returns `201 Created` with the user object) and the **OTP flow** via `/signup-init` → `/verify-email` → `/create-password`. `/login` issues JWTs for session-authenticated routes.
 - **[voice-service](file:///home/sanskars/Codezz/DEV/Interview_System_js/apps/voice-service)**: Bidirectional WebSocket server hosting the real-time audio orchestration loop:
   - **STT**: Streams candidate audio chunks directly to Deepgram.
   - **Context Assembler**: Merges Redis history buffers with postgres `pgvector` RAG context.
@@ -42,7 +42,7 @@ The repository is structured as a `pnpm` workspace containing independent micros
 ### Shared Packages (`packages/`)
 - **[shared](file:///home/sanskars/Codezz/DEV/Interview_System_js/packages/shared)**: Core type definitions (`Turn`, `Session`, `WSMessage`), Pino structured logger, and `@t3-oss/env-core` schema validators.
 - **[db](file:///home/sanskars/Codezz/DEV/Interview_System_js/packages/db)**: Drizzle ORM configuration, schema declarations (Users, Sessions, Turns, Reports, Knowledge Base), standalone migration script (`pnpm db:migrate`), and database client.
-- **[rag](file:///home/sanskars/Codezz/DEV/Interview_System_js/packages/rag)**: Nomic Embed API client (`nomic-embed-text-v1.5`) and cosine similarity matching on `pgvector`.
+- **[rag](file:///home/sanskars/Codezz/DEV/Interview_System_js/packages/rag)**: OpenRouter embedding client (`openai/text-embedding-3-small`) with cosine similarity matching on `pgvector`. Failed or malformed embedding responses throw an `AppError` (`EMBEDDING_FAILED`, HTTP 500) which callers (e.g. the voice-service orchestrator) catch and fall back on gracefully.
 - **[queue](file:///home/sanskars/Codezz/DEV/Interview_System_js/packages/queue)**: Shared Redis connection client and BullMQ task definitions.
 
 ---
@@ -92,7 +92,7 @@ Open the `.env` file and populate:
 - `DATABASE_URL`: Target database URL (defaults to `postgresql://ai_interviewer:ai_interviewer_dev@localhost:5432/ai_interviewer`).
 - `REDIS_URL`: Target Redis connection URL (defaults to `redis://localhost:6379`).
 - `DEEPGRAM_API_KEY`: API key for voice streaming services (STT & TTS).
-- `OPENROUTER_API_KEY`: API key for LLM streaming and nomic embeddings.
+- `OPENROUTER_API_KEY`: API key for LLM streaming and RAG embeddings (OpenRouter embedding model).
 - `RAZORPAY_KEY_ID` / `RAZORPAY_WEBHOOK_SECRET`: Subscriptions simulation variables (`RAZORPAY_KEY_SECRET` is unused).
 - `WORKER_URL`: The public HTTP URL of the background worker service (used for wakeup pings on Render).
 
@@ -125,20 +125,21 @@ node apps/worker/index.js
 
 ## 🧪 Testing Suite
 
-Tests are built using native Node.js test runner frameworks and Vitest. They can be executed collectively or targeted by component:
+Tests are written against the native Node.js test runner API (via the `tests/shims/node-test.js` shim) and executed with **Vitest** — this is the canonical runner used by CI. They use in-memory mocks for Redis, Postgres, and external providers so no live infrastructure is required:
 
 ```bash
-# Run all unit tests (mocked I/O, runs in < 100ms)
-pnpm test:unit
+# Run the full unit + integration suite (CI equivalent)
+pnpm exec vitest run --reporter=verbose
 
-# Run full integration tests (uses in-memory database mocks)
-pnpm test:all-integration
-
-# Run specific integration scopes
-pnpm test:integration   # Session & auth CRUD flow
-pnpm test:billing       # Razorpay subscriptions & webhooks signatures
-pnpm test:rag           # Embedding vector searching
+# Run a single test file
+pnpm exec vitest run tests/integration/rag.test.js
 ```
+
+Coverage includes:
+- **`tests/unit`** — Voice-service `TurnOrchestrator` behavior: user/assistant turns, streaming, and the Write-Ahead guarantee that Redis turns are persisted before audio is sent to the client.
+- **`tests/integration/session.test.js`** — Full auth + session CRUD flow against an in-memory Drizzle mock: direct signup (`201`), duplicate-signup conflict (`409`), login, profile, session creation/limits/teardown.
+- **`tests/integration/rag.test.js`** — RAG + worker integration: `getEmbedding` throws `AppError` (`EMBEDDING_FAILED`) on failure, evaluation-job idempotency guard, and all four Circuit Breaker fallback levels (primary → backup rotation → cached questions → credit-refund flag).
+- **`tests/integration/billing.test.js`** — Razorpay subscription upgrade via verified webhook signatures and background credit-refund processing.
 
 ---
 
