@@ -1,28 +1,67 @@
 import WebSocket from 'ws';
 import { env, logger, AppError } from '@ai-interviewer/shared';
+import { STTNormalizer } from './normalizer';
 
 export interface STTProvider {
   startSession(sessionId: string): Promise<void>;
   sendAudio(audioChunk: Buffer): void;
   onTurnComplete(callback: (transcript: string) => void): void;
+  onInterimTranscript?(callback: (transcript: string) => void): void;
+  flushTurn?(): void;
   endSession(): void;
+}
+
+export class MockSTTAdapter implements STTProvider {
+  private onTurnCompleteCallback: ((transcript: string) => void) | null = null;
+  private hasSimulatedTurn = false;
+
+  async startSession(sessionId: string): Promise<void> {
+    logger.info({ sessionId }, 'STT [Mock]: Mock STT session started');
+  }
+
+  sendAudio(audioChunk: Buffer): void {
+    if (!this.hasSimulatedTurn && this.onTurnCompleteCallback) {
+      this.hasSimulatedTurn = true;
+      setTimeout(() => {
+        if (this.onTurnCompleteCallback) {
+          this.onTurnCompleteCallback('I am testing the AI interviewer locally with complete sentences.');
+        }
+        this.hasSimulatedTurn = false;
+      }, 2500);
+    }
+  }
+
+  onTurnComplete(callback: (transcript: string) => void): void {
+    this.onTurnCompleteCallback = callback;
+  }
+
+  endSession(): void {
+    logger.info('STT [Mock]: Session ended');
+  }
 }
 
 export class DeepgramSTTAdapter implements STTProvider {
   private ws: WebSocket | null = null;
   private sessionId: string | null = null;
-  private transcriptBuffer = '';
+  private finalSentenceBuffer = '';
+  private interimTranscript = '';
+  private silenceTimer: NodeJS.Timeout | null = null;
+  private keepAliveTimer: NodeJS.Timeout | null = null;
   private onTurnCompleteCallback: ((transcript: string) => void) | null = null;
+  private onInterimTranscriptCallback: ((transcript: string) => void) | null = null;
   private connectionError: Error | null = null;
 
   async startSession(sessionId: string): Promise<void> {
     this.sessionId = sessionId;
-    this.transcriptBuffer = '';
+    this.finalSentenceBuffer = '';
+    this.interimTranscript = '';
     this.connectionError = null;
 
-    const url = 'wss://api.deepgram.com/v2/listen?eot_threshold=0.7&eot_timeout_ms=5000&model=flux-general-en&encoding=linear16&sample_rate=16000';
+    // DEEPGRAM NOVA-2 MODEL WITH TECHNICAL KEYWORD BOOSTING & 4000ms ENDPOINTING
+    const keywords = 'keywords=Next.js:3,Express.js:3,PostgreSQL:3,Redis:3,Docker:3,Kubernetes:3,TypeScript:3,GraphQL:3,REST:3,Microservices:3,Render:3,Node.js:3,React:3,AWS:3,Postgres:3,SQL:3,MongoDB:3,Tailwind:3,Prisma:3,Drizzle:3,B-Tree:3,ACID:3,MVCC:3,TCP/IP:3,UDP:3,HTTP/2:3,WebSockets:3,TLS:3,DNS:3,CDN:3,Polymorphism:3,Encapsulation:3,SOLID:3,Event Loop:3,Mutex:3,Semaphore:3,Deadlock:3';
+    const url = `wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=16000&channels=1&interim_results=true&smart_format=true&punctuate=true&endpointing=4000&utterance_end_ms=4000&vad_events=true&${keywords}`;
 
-    logger.info({ sessionId, url }, 'STT: Connecting to Deepgram Voice Agent API (WebSocket v2)...');
+    logger.info({ sessionId }, 'STT: Connecting to Deepgram Nova-2 Voice API with technical keyword boosting...');
 
     this.ws = new WebSocket(url, {
       headers: {
@@ -31,42 +70,55 @@ export class DeepgramSTTAdapter implements STTProvider {
     });
 
     this.ws.on('open', () => {
-      logger.info({ sessionId: this.sessionId }, 'STT: Connected to Deepgram Voice Agent WebSocket');
+      logger.info({ sessionId: this.sessionId }, 'STT: Connected to Deepgram Nova-2 WebSocket');
+      
+      // KeepAlive loop: Send KeepAlive frame every 5s to prevent Deepgram 1011 timeout during candidate silence!
+      this.clearKeepAliveTimer();
+      this.keepAliveTimer = setInterval(() => {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          try {
+            this.ws.send(JSON.stringify({ type: 'KeepAlive' }));
+          } catch (e) {}
+        }
+      }, 5000);
     });
 
     this.ws.on('message', (data: WebSocket.Data) => {
       try {
         const response = JSON.parse(data.toString());
-        const event = response.event;
+        const transcript = (response.channel?.alternatives?.[0]?.transcript || '').trim();
+        const isFinal = Boolean(response.is_final);
+        const isSpeechFinal = Boolean(response.speech_final || response.type === 'UtteranceEnd');
 
-        if (event === 'StartOfTurn') {
-          logger.info({ sessionId: this.sessionId }, 'STT: [StartOfTurn] User began speaking. Clearing buffer.');
-          this.transcriptBuffer = '';
-        } else if (event === 'EndOfTurn') {
-          const finalTranscript = this.transcriptBuffer.trim();
-          logger.info({ sessionId: this.sessionId, transcript: finalTranscript }, 'STT: [EndOfTurn] User finished speaking.');
-          
-          if (this.onTurnCompleteCallback) {
-            this.onTurnCompleteCallback(finalTranscript);
+        if (transcript) {
+          if (isFinal) {
+            this.finalSentenceBuffer += (this.finalSentenceBuffer ? ' ' : '') + transcript;
+            this.interimTranscript = '';
+          } else {
+            this.interimTranscript = transcript;
           }
-          this.transcriptBuffer = '';
-        } else {
-          // MANDATORY REQUIREMENT 1: Handle both transcript payload structures safely
-          const transcript = response.transcript || response.channel?.alternatives?.[0]?.transcript || '';
-          if (transcript) {
-            const clean = transcript.trim();
-            if (clean) {
-              this.transcriptBuffer += (this.transcriptBuffer ? ' ' : '') + clean;
-              logger.debug({ sessionId: this.sessionId, partial: clean }, 'STT: Partial transcript accumulated');
-            }
+
+          // Emit live interim transcript update to UI in real-time
+          const currentLiveText = (this.finalSentenceBuffer + ' ' + this.interimTranscript).trim();
+          if (this.onInterimTranscriptCallback && currentLiveText) {
+            this.onInterimTranscriptCallback(currentLiveText);
           }
+
+          this.resetSilenceTimer();
+        }
+
+        // Only auto-flush turn if speech_final is true AND sentence has at least 8 words
+        const currentSentence = (this.finalSentenceBuffer + ' ' + this.interimTranscript).trim();
+        const wordCount = currentSentence.split(/\s+/).filter(Boolean).length;
+
+        if (isSpeechFinal && wordCount >= 8) {
+          this.flushTurn();
         }
       } catch (err) {
         logger.error({ err, sessionId: this.sessionId }, 'STT: Error parsing socket message');
       }
     });
 
-    // MANDATORY REQUIREMENT 2: Unexpected error handling
     this.ws.on('error', (error: Error) => {
       const appErr = new AppError('STT_DISCONNECTED', `STT connection lost: ${error.message || String(error)}`, 503);
       this.connectionError = appErr;
@@ -74,6 +126,8 @@ export class DeepgramSTTAdapter implements STTProvider {
     });
 
     this.ws.on('close', (code: number, reason: Buffer) => {
+      this.clearSilenceTimer();
+      this.clearKeepAliveTimer();
       if (code !== 1000) {
         const reasonStr = reason.toString('utf-8') || 'unknown';
         const appErr = new AppError('STT_DISCONNECTED', `STT connection lost (code ${code}): ${reasonStr}`, 503);
@@ -85,8 +139,51 @@ export class DeepgramSTTAdapter implements STTProvider {
     });
   }
 
+  onTurnComplete(callback: (transcript: string) => void): void {
+    this.onTurnCompleteCallback = callback;
+  }
+
+  onInterimTranscript(callback: (transcript: string) => void): void {
+    this.onInterimTranscriptCallback = callback;
+  }
+
+  private resetSilenceTimer() {
+    this.clearSilenceTimer();
+    // Wait 4000ms (4.0 seconds) of silence before finalizing sentence turn
+    this.silenceTimer = setTimeout(() => {
+      this.flushTurn();
+    }, 4000);
+  }
+
+  private clearSilenceTimer() {
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
+      this.silenceTimer = null;
+    }
+  }
+
+  private clearKeepAliveTimer() {
+    if (this.keepAliveTimer) {
+      clearInterval(this.keepAliveTimer);
+      this.keepAliveTimer = null;
+    }
+  }
+
+  flushTurn(): void {
+    this.clearSilenceTimer();
+    const rawSentence = (this.finalSentenceBuffer + (this.interimTranscript ? ' ' + this.interimTranscript : '')).trim();
+    this.finalSentenceBuffer = '';
+    this.interimTranscript = '';
+
+    const normalizedSentence = STTNormalizer.normalize(rawSentence);
+
+    if (normalizedSentence && this.onTurnCompleteCallback) {
+      logger.info({ sessionId: this.sessionId, raw: rawSentence, normalized: normalizedSentence }, 'STT: Complete sentence turn finished & normalized');
+      this.onTurnCompleteCallback(normalizedSentence);
+    }
+  }
+
   sendAudio(audioChunk: Buffer): void {
-    // Propagate asynchronous connection failures instantly to prevent silent hanging
     if (this.connectionError) {
       throw this.connectionError;
     }
@@ -98,11 +195,9 @@ export class DeepgramSTTAdapter implements STTProvider {
     this.ws.send(audioChunk);
   }
 
-  onTurnComplete(callback: (transcript: string) => void): void {
-    this.onTurnCompleteCallback = callback;
-  }
-
   endSession(): void {
+    this.clearSilenceTimer();
+    this.clearKeepAliveTimer();
     if (this.ws) {
       if (this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'CloseStream' }));
@@ -110,7 +205,8 @@ export class DeepgramSTTAdapter implements STTProvider {
       }
       this.ws = null;
     }
-    this.transcriptBuffer = '';
+    this.finalSentenceBuffer = '';
+    this.interimTranscript = '';
     this.onTurnCompleteCallback = null;
     this.connectionError = null;
   }

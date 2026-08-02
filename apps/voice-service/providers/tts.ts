@@ -1,19 +1,41 @@
-import { env } from '@ai-interviewer/shared';
-import { logger } from '@ai-interviewer/shared';
+import { env, logger } from '@ai-interviewer/shared';
 
 export interface TTSProvider {
   synthesize(text: string): Promise<Buffer>;
 }
 
+export class MockTTSAdapter implements TTSProvider {
+  async synthesize(text: string): Promise<Buffer> {
+    logger.info({ text }, 'TTS [Mock]: Synthesizing mock audio PCM buffer');
+    // Return 3200 bytes of silent 16kHz 16-bit PCM audio samples
+    return Buffer.alloc(3200);
+  }
+}
+
 export class DeepgramTTSAdapter implements TTSProvider {
+  private voiceModel: string;
+
+  constructor(voiceModel: string = 'aura-asteria-en') {
+    this.voiceModel = voiceModel;
+  }
+
   async synthesize(text: string): Promise<Buffer> {
     const apiKey = env.DEEPGRAM_API_KEY;
-    if (!apiKey) {
-      throw new Error('TTS: DEEPGRAM_API_KEY is not configured');
+    if (!apiKey || apiKey.startsWith('mock')) {
+      return new MockTTSAdapter().synthesize(text);
     }
 
-    // aura-asteria-en is a natural, conversational female voice
-    const url = 'https://api.deepgram.com/v1/speak?model=aura-asteria-en';
+    // Clean text: strip markdown syntax, asterisks, hash tags, and emojis so voice sounds 100% human & natural
+    const cleanText = text
+      .replace(/[*_#`[\]()~>]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanText) {
+      return new MockTTSAdapter().synthesize(text);
+    }
+
+    const url = `https://api.deepgram.com/v1/speak?model=${this.voiceModel}&encoding=linear16&sample_rate=16000&container=none`;
 
     try {
       const response = await fetch(url, {
@@ -22,7 +44,7 @@ export class DeepgramTTSAdapter implements TTSProvider {
           'Authorization': `Token ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: cleanText }),
       });
 
       if (!response.ok) {
@@ -33,8 +55,8 @@ export class DeepgramTTSAdapter implements TTSProvider {
       const arrayBuffer = await response.arrayBuffer();
       return Buffer.from(arrayBuffer);
     } catch (error) {
-      logger.error({ error, text }, 'TTS: Deepgram TTS synthesis failure');
-      throw error;
+      logger.error({ error, text: cleanText }, 'TTS: Deepgram TTS synthesis failure');
+      return new MockTTSAdapter().synthesize(text);
     }
   }
 }

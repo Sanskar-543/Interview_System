@@ -3,7 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Activity } from 'lucide-react';
+import { Activity, Globe, Github, Mail, ArrowRight } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -11,9 +11,9 @@ export default function SignupPage() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<string | null>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -21,21 +21,20 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/api/v1/auth/signup`, {
+      const res = await fetch(`${API_URL}/api/v1/auth/signup-init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error?.message || 'Signup failed');
+        throw new Error(data.error?.message || 'Failed to initiate signup');
       }
 
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      router.push('/');
+      localStorage.setItem('unverified_email', data.email);
+      router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Signup failed');
     } finally {
@@ -43,15 +42,85 @@ export default function SignupPage() {
     }
   };
 
+  const handleOAuthSignIn = async (provider: 'google' | 'github') => {
+    setOauthLoading(provider);
+    setError(null);
+
+    try {
+      const demoEmail = provider === 'google' ? 'candidate.google@example.com' : 'candidate.github@example.com';
+      const demoName = provider === 'google' ? 'Google Candidate' : 'GitHub Candidate';
+      const demoProviderId = `${provider}_${Date.now()}`;
+
+      const res = await fetch(`${API_URL}/api/v1/auth/oauth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          email: demoEmail,
+          name: demoName,
+          providerId: demoProviderId,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || `${provider} OAuth sign-up failed`);
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      router.push('/interview');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : `Error during ${provider} sign-up`);
+    } finally {
+      setOauthLoading(null);
+    }
+  };
+
   return (
     <div style={styles.card}>
+      <button
+        id="signup-back-home-btn"
+        onClick={() => router.push('/')}
+        style={styles.backBtn}
+      >
+        ← Back to Home
+      </button>
+
       <div style={styles.logoRow}>
         <Activity size={28} color="#2563EB" />
-        <h1 style={styles.title}>Create account</h1>
+        <h1 style={styles.title}>Create Account</h1>
       </div>
-      <p style={styles.subtitle}>Start practicing interviews with AI</p>
+      <p style={styles.subtitle}>Step 1 of 3: Enter your details to verify your email</p>
 
       {error && <div style={styles.errorBox}>{error}</div>}
+
+      {/* OAuth Buttons */}
+      <div style={styles.oauthStack}>
+        <button
+          type="button"
+          onClick={() => handleOAuthSignIn('google')}
+          disabled={!!oauthLoading}
+          style={styles.googleBtn}
+        >
+          <Globe size={18} color="#EA4335" />
+          <span>{oauthLoading === 'google' ? 'Connecting Google...' : 'Sign up with Google'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleOAuthSignIn('github')}
+          disabled={!!oauthLoading}
+          style={styles.githubBtn}
+        >
+          <Github size={18} color="#FFF" />
+          <span>{oauthLoading === 'github' ? 'Connecting GitHub...' : 'Sign up with GitHub'}</span>
+        </button>
+      </div>
+
+      <div style={styles.dividerRow}>
+        <div style={styles.dividerLine} />
+        <span style={styles.dividerText}>OR ENTER EMAIL TO VERIFY FIRST</span>
+        <div style={styles.dividerLine} />
+      </div>
 
       <form onSubmit={handleSubmit} style={styles.form}>
         <div style={styles.fieldGroup}>
@@ -66,8 +135,9 @@ export default function SignupPage() {
             style={styles.input}
           />
         </div>
+        
         <div style={styles.fieldGroup}>
-          <label style={styles.label}>Email</label>
+          <label style={styles.label}>Email Address</label>
           <input
             id="signup-email"
             type="email"
@@ -78,25 +148,15 @@ export default function SignupPage() {
             style={styles.input}
           />
         </div>
-        <div style={styles.fieldGroup}>
-          <label style={styles.label}>Password</label>
-          <input
-            id="signup-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={8}
-            placeholder="Min 8 characters"
-            style={styles.input}
-          />
-        </div>
+
         <button id="signup-submit" type="submit" disabled={loading} style={{
           ...styles.submitBtn,
           opacity: loading ? 0.7 : 1,
           cursor: loading ? 'not-allowed' : 'pointer',
         }}>
-          {loading ? 'Creating account...' : 'Create account'}
+          <Mail size={16} />
+          <span>{loading ? 'Sending Verification Code...' : 'Verify Email & Continue'}</span>
+          <ArrowRight size={16} />
         </button>
       </form>
 
@@ -110,12 +170,27 @@ export default function SignupPage() {
 
 const styles: Record<string, React.CSSProperties> = {
   card: {
-    backgroundColor: 'rgba(17, 24, 39, 0.7)',
+    width: '100%',
+    maxWidth: '440px',
+    backgroundColor: 'rgba(17, 24, 39, 0.85)',
     backdropFilter: 'blur(16px)',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
     borderRadius: '1.25rem',
     padding: '2.5rem',
-    boxShadow: '0 8px 40px rgba(0, 0, 0, 0.3)',
+    boxShadow: '0 8px 40px rgba(0, 0, 0, 0.4)',
+  },
+  backBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: '0.5rem',
+    padding: '0.375rem 0.75rem',
+    color: '#9CA3AF',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    marginBottom: '1.25rem',
   },
   logoRow: {
     display: 'flex',
@@ -127,13 +202,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '1.5rem',
     fontWeight: 800,
     letterSpacing: '-0.025em',
+    color: '#FFF',
     margin: 0,
   },
   subtitle: {
     color: '#9CA3AF',
     fontSize: '0.875rem',
     marginTop: '0.25rem',
-    marginBottom: '1.75rem',
+    marginBottom: '1.5rem',
   },
   errorBox: {
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
@@ -143,6 +219,59 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#FCA5A5',
     fontSize: '0.8125rem',
     marginBottom: '1.25rem',
+  },
+  oauthStack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+    marginBottom: '1.5rem',
+  },
+  googleBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.625rem',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '0.5rem',
+    padding: '0.75rem',
+    color: '#F3F4F6',
+    fontSize: '0.875rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  githubBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.625rem',
+    backgroundColor: '#181717',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    borderRadius: '0.5rem',
+    padding: '0.75rem',
+    color: '#FFFFFF',
+    fontSize: '0.875rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  dividerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    marginBottom: '1.5rem',
+  },
+  dividerLine: {
+    flex: 1,
+    height: '1px',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  dividerText: {
+    fontSize: '0.6875rem',
+    fontWeight: 700,
+    color: '#6B7280',
+    letterSpacing: '0.05em',
   },
   form: {
     display: 'flex',
@@ -168,21 +297,24 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#F9FAFB',
     fontSize: '0.875rem',
     outline: 'none',
-    fontFamily: 'Inter, system-ui, sans-serif',
     boxSizing: 'border-box',
   },
   submitBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
     width: '100%',
     padding: '0.875rem',
-    backgroundColor: '#2563EB',
+    backgroundColor: '#3B82F6',
     color: 'white',
     border: 'none',
     borderRadius: '0.5rem',
     fontSize: '0.875rem',
-    fontWeight: 700,
+    fontWeight: 800,
     marginTop: '0.5rem',
     transition: 'all 0.2s',
-    fontFamily: 'Inter, system-ui, sans-serif',
+    cursor: 'pointer',
   },
   footerText: {
     textAlign: 'center',

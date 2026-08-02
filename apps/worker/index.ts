@@ -39,8 +39,8 @@ billingWorker.on('failed', (job, err) => {
 
 logger.info('Worker: Asynchronous Background Job Workers running successfully.');
 
-// Create a dummy HTTP server for Render's health checks and to allow waking up the service
-const port = process.env.PORT || 8000;
+// Create an HTTP server for Render's health checks and to allow waking up the service
+const port = process.env.WORKER_PORT || 8000;
 const server = http.createServer((req, res) => {
   if (req.url === '/health' || req.url === '/ping') {
     res.writeHead(200, { 'Content-Type': 'application/json' });

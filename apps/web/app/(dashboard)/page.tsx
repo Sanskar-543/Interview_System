@@ -61,38 +61,14 @@ export default function DashboardPage() {
     fetchData();
   }, [router]);
 
-  const handleNewSession = async () => {
+  const handleNewSession = () => {
     if (user && user.plan === 'free' && user.sessionCount >= 3) {
       setShowUpgradeModal(true);
       return;
     }
 
-    setCreating(true);
-    setError(null);
-    try {
-      const res = await fetch(`${API_URL}/api/v1/sessions`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (res.status === 403) {
-          setShowUpgradeModal(true);
-          return;
-        }
-        throw new Error(data.error?.message || 'Failed to create session');
-      }
-
-      // Immediately redirect to interview room
-      router.push(`/interview/${data.session.id}`);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create session');
-    } finally {
-      setCreating(false);
-    }
+    // Navigate to customization setup page (/interview)
+    router.push('/interview');
   };
 
   const handleViewDetails = (session: SessionRecord) => {

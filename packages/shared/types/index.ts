@@ -16,6 +16,10 @@ export interface Session {
   id: string;          // sess_01j...
   userId: string;      // usr_01j...
   status: SessionStatus;
+  jobTitle?: string | null;
+  jobDescription?: string | null;
+  resumeText?: string | null;
+  audioMode?: 'hands_free' | 'push_to_talk';
   turns: Turn[];
   createdAt: string;   // ISO 8601 UTC
   updatedAt: string;   // ISO 8601 UTC
@@ -25,6 +29,7 @@ export interface Session {
 export type WSMessageType =
   | 'session_start'
   | 'session_started'
+  | 'submit_turn'
   | 'speech_start'
   | 'speech_end'
   | 'transcript_interim'

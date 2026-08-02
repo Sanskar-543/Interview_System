@@ -25,6 +25,9 @@ export const useVoice = (config: UseVoiceConfig) => {
   const configRef = useRef<UseVoiceConfig>(config);
   configRef.current = config;
 
+  const retryCountRef = useRef<number>(0);
+  const retryTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -74,7 +77,13 @@ export const useVoice = (config: UseVoiceConfig) => {
   }, []);
 
   const disconnect = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+
     stopRecording();
+
     if (wsRef.current) {
       wsRef.current.onopen = null;
       wsRef.current.onmessage = null;
@@ -89,56 +98,122 @@ export const useVoice = (config: UseVoiceConfig) => {
     setStatus('idle');
   }, [stopRecording]);
 
-  const playAudioBuffer = useCallback((arrayBuffer: ArrayBuffer) => {
+  const audioQueueRef = useRef<ArrayBuffer[]>([]);
+  const isProcessingQueueRef = useRef<boolean>(false);
+  const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+
+  const stopAllAudio = useCallback(() => {
+    audioQueueRef.current = [];
+    activeSourcesRef.current.forEach((src) => {
+      try {
+        src.stop();
+      } catch (e) {
+        // Ignore already stopped sources
+      }
+    });
+    activeSourcesRef.current = [];
+    if (audioContextRef.current) {
+      nextPlaybackTimeRef.current = audioContextRef.current.currentTime;
+    }
+    setIsPlaying(false);
+  }, []);
+
+  const processAudioQueue = useCallback(async () => {
+    if (isProcessingQueueRef.current) return;
+    isProcessingQueueRef.current = true;
+
     try {
-      if (!audioContextRef.current) {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        audioContextRef.current = new AudioCtx({ sampleRate: 16000 });
-      }
+      while (audioQueueRef.current.length > 0) {
+        const arrayBuffer = audioQueueRef.current.shift();
+        if (!arrayBuffer) continue;
 
-      const ctx = audioContextRef.current;
-      const int16Array = new Int16Array(arrayBuffer);
-      const float32Array = new Float32Array(int16Array.length);
-
-      for (let i = 0; i < int16Array.length; i++) {
-        float32Array[i] = int16Array[i] / (int16Array[i] < 0 ? 0x8000 : 0x7FFF);
-      }
-
-      const audioBuffer = ctx.createBuffer(1, float32Array.length, 16000);
-      audioBuffer.getChannelData(0).set(float32Array);
-
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(ctx.destination);
-
-      const now = ctx.currentTime;
-      const startTime = Math.max(now, nextPlaybackTimeRef.current);
-
-      source.start(startTime);
-      setIsPlaying(true);
-      setStatus('speaking'); // Transition state machine to speaking during audio playback
-
-      source.onended = () => {
-        if (ctx.currentTime >= nextPlaybackTimeRef.current) {
-          setIsPlaying(false);
-          setStatus((prev) => (prev === 'speaking' ? 'listening' : prev));
+        if (!audioContextRef.current) {
+          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+          audioContextRef.current = new AudioCtx({ sampleRate: 16000 });
         }
-      };
 
-      nextPlaybackTimeRef.current = startTime + audioBuffer.duration;
+        const ctx = audioContextRef.current;
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+
+        let audioBuffer: AudioBuffer | null = null;
+
+        // 1. Try native Web Audio container decoding (WAV / MP3)
+        try {
+          const clonedBuffer = arrayBuffer.slice(0);
+          audioBuffer = await ctx.decodeAudioData(clonedBuffer);
+        } catch (decodeErr) {
+          // 2. Fallback to raw 16-bit 16kHz Linear PCM decoding
+          const int16Array = new Int16Array(arrayBuffer);
+          const float32Array = new Float32Array(int16Array.length);
+
+          for (let i = 0; i < int16Array.length; i++) {
+            float32Array[i] = int16Array[i] / (int16Array[i] < 0 ? 0x8000 : 0x7FFF);
+          }
+
+          audioBuffer = ctx.createBuffer(1, float32Array.length, 16000);
+          audioBuffer.getChannelData(0).set(float32Array);
+        }
+
+        if (!audioBuffer) continue;
+
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        activeSourcesRef.current.push(source);
+
+        const now = ctx.currentTime;
+        const startTime = Math.max(now, nextPlaybackTimeRef.current);
+
+        source.start(startTime);
+        nextPlaybackTimeRef.current = startTime + audioBuffer.duration;
+
+        setIsPlaying(true);
+        setStatus('speaking');
+
+        source.onended = () => {
+          activeSourcesRef.current = activeSourcesRef.current.filter((s) => s !== source);
+          if (activeSourcesRef.current.length === 0 && audioQueueRef.current.length === 0) {
+            setIsPlaying(false);
+            setStatus((prev) => (prev === 'speaking' ? 'listening' : prev));
+          }
+        };
+      }
     } catch (err) {
-      console.error('Audio playback error:', err);
+      console.error('Audio processing queue error:', err);
+    } finally {
+      isProcessingQueueRef.current = false;
     }
   }, []);
 
+  const playAudioBuffer = useCallback((arrayBuffer: ArrayBuffer) => {
+    audioQueueRef.current.push(arrayBuffer);
+    processAudioQueue();
+  }, [processAudioQueue]);
+
   const connect = useCallback(() => {
     if (wsRef.current) {
-      if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        setIsConnected(true);
+        return;
+      }
+      if (wsRef.current.readyState === WebSocket.CONNECTING) {
         return;
       }
     }
 
-    const targetUrl = configRef.current.gatewayUrl;
+    // Target URL with fallback: try primary gateway URL first, fallback to direct port if primary fails
+    let targetUrl = configRef.current.gatewayUrl;
+    if (retryCountRef.current === 1) {
+      // On first retry attempt, if targetUrl was 5001, try 5000 (gateway), or vice versa
+      if (targetUrl.includes(':5001')) {
+        targetUrl = targetUrl.replace(':5001', ':5000');
+      } else if (targetUrl.includes(':5000')) {
+        targetUrl = targetUrl.replace(':5000', ':5001');
+      }
+    }
+
     if (!targetUrl) return;
 
     try {
@@ -149,6 +224,8 @@ export const useVoice = (config: UseVoiceConfig) => {
       ws.onopen = () => {
         setIsConnected(true);
         setStatus('listening');
+        retryCountRef.current = 0; // Reset retry counter on clean open
+
         ws.send(JSON.stringify({
           type: 'session_start',
           sessionId: configRef.current.sessionId,
@@ -169,14 +246,17 @@ export const useVoice = (config: UseVoiceConfig) => {
               if (configRef.current.onTranscriptInterim) configRef.current.onTranscriptInterim(msg.text);
               break;
             case 'transcript_final':
-              setStatus('processing'); // AI is processing response
+              setStatus('processing'); // AI is evaluating candidate response
               if (configRef.current.onTranscriptFinal) configRef.current.onTranscriptFinal(msg.text);
               break;
             case 'turn_completed':
+              setStatus('listening'); // Reset status back to listening when AI completes turn
               if (configRef.current.onTurnCompleted) configRef.current.onTurnCompleted(msg.turn);
               break;
             case 'error':
-              setStatus('error');
+              if (!isConnected) {
+                setStatus('error');
+              }
               if (configRef.current.onError) configRef.current.onError(new Error(msg.message));
               break;
           }
@@ -188,13 +268,22 @@ export const useVoice = (config: UseVoiceConfig) => {
 
       ws.onerror = () => {
         setStatus('error');
-        if (configRef.current.onError) configRef.current.onError(new Error('WebSocket connection error'));
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         setIsConnected(false);
-        setStatus('idle');
         wsRef.current = null;
+
+        // Auto-reconnect if closed unexpectedly and max retries not exceeded
+        if (!event.wasClean && retryCountRef.current < 3) {
+          retryCountRef.current += 1;
+          setStatus('connecting');
+          retryTimerRef.current = setTimeout(() => {
+            connect();
+          }, 1000);
+        } else {
+          setStatus('idle');
+        }
       };
     } catch (err) {
       setStatus('error');
@@ -264,13 +353,12 @@ export const useVoice = (config: UseVoiceConfig) => {
     }
   };
 
-  // Explicit unmount cleanup for AnalyserNode and animationFrame to prevent memory leaks mid-session
-  useEffect(() => {
-    return () => {
-      stopRecording();
-      disconnect();
-    };
-  }, [stopRecording, disconnect]);
+  const submitTurn = useCallback(() => {
+    stopRecording();
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'submit_turn' }));
+    }
+  }, [stopRecording]);
 
   return {
     isConnected,
@@ -283,5 +371,6 @@ export const useVoice = (config: UseVoiceConfig) => {
     disconnect,
     startRecording,
     stopRecording,
+    submitTurn,
   };
 };

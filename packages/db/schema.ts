@@ -1,4 +1,4 @@
-import { customType, pgTable, text, timestamp, integer, index } from 'drizzle-orm/pg-core';
+import { customType, pgTable, text, timestamp, integer, boolean, index } from 'drizzle-orm/pg-core';
 
 export const vector = customType<{ data: number[] }>({
   dataType() {
@@ -9,10 +9,15 @@ export const vector = customType<{ data: number[] }>({
 export const users = pgTable('users', {
   id: text('id').primaryKey(), // usr_...
   email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  passwordHash: text('password_hash'),
   name: text('name').notNull(),
   plan: text('plan', { enum: ['free', 'paid'] }).default('free').notNull(),
   sessionCount: integer('session_count').default(0).notNull(),
+  emailVerified: boolean('email_verified').default(false).notNull(),
+  provider: text('provider', { enum: ['credentials', 'google', 'github'] }).default('credentials').notNull(),
+  providerId: text('provider_id'),
+  verificationCode: text('verification_code'),
+  verificationExpiresAt: timestamp('verification_expires_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -21,6 +26,10 @@ export const sessions = pgTable('sessions', {
   id: text('id').primaryKey(), // sess_...
   userId: text('user_id').references(() => users.id).notNull(),
   status: text('status', { enum: ['active', 'completed', 'failed'] }).default('active').notNull(),
+  jobTitle: text('job_title'),
+  jobDescription: text('job_description'),
+  resumeText: text('resume_text'),
+  audioMode: text('audio_mode', { enum: ['hands_free', 'push_to_talk'] }).default('hands_free').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({

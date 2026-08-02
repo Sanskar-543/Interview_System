@@ -10,6 +10,7 @@ import { sessionsRouter } from './routes/sessions';
 import { usersRouter } from './routes/users';
 import { reportsRouter } from './routes/reports';
 import { billingRouter, billingWebhookHandler } from './routes/billing';
+import { adminRouter } from './routes/admin';
 
 const app = express();
 const server = createServer(app);
@@ -46,8 +47,8 @@ app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json' }), b
 
 app.use(express.json());
 
-// Proxy for WebSocket voice connections to the voice-service
-const wsProxyTarget = env.VOICE_SERVICE_URL || `ws://localhost:${env.PORT + 1}`;
+// Proxy for WebSocket voice connections to the voice-service (use explicit 127.0.0.1 to prevent IPv6 ::1 ECONNREFUSED)
+const wsProxyTarget = (env.VOICE_SERVICE_URL || `ws://127.0.0.1:${env.PORT + 1}`).replace('localhost', '127.0.0.1');
 const proxy = httpProxy.createProxyServer({
   target: wsProxyTarget,
   ws: true,
@@ -79,6 +80,7 @@ app.use('/api/v1/sessions', sessionsRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/reports', reportsRouter);
 app.use('/api/v1/billing', billingRouter);
+app.use('/api/v1/admin', adminRouter);
 
 // Global error handler
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

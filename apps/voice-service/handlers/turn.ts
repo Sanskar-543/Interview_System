@@ -21,6 +21,26 @@ export interface TurnOrchestratorConfig {
   sendAudioChunk: (chunk: Buffer) => void;
 }
 
+function cleanMetaThoughtPreamble(text: string): string {
+  if (!text) return text;
+
+  // 1. If text starts with prompt echoes ("You're giving...", "The candidate has...", "Focus on...", "We need to..."), strip meta section completely
+  let cleaned = text
+    .replace(/^(?:You're giving|You are giving|The candidate|Focus on|We need to|CURRENT STAGE:|The stage|We must|Must follow|So we can|Here is|Rule:|As an interviewer|System:)+[\s\S]*?(?:fundamentals\.|overview\.|protocols\.|architecture\.|say:|ask:|state:|"|\n\n|:|\. So |\? |\!\s*)/gi, '')
+    .replace(/^"(.*)"$/, '$1')
+    .trim();
+
+  // 2. If filtering left prompt text or non-dialogue, extract clean question using regex match
+  if (!cleaned || cleaned.length < 5 || /^(?:You're|You are|The candidate|Focus on)/i.test(cleaned)) {
+    const questionMatch = text.match(/(?:Welcome|Hello|Hi|What|How|Could|Can|Tell|Describe|Why|Which|In your|For your)[\s\S]*?[.?!]/i);
+    if (questionMatch) {
+      cleaned = questionMatch[0].trim();
+    }
+  }
+
+  return cleaned || text;
+}
+
 export class TurnOrchestrator {
   private stt: STTProvider;
   private llm: LLMProvider;
@@ -49,116 +69,64 @@ export class TurnOrchestrator {
     this.userId = config.userId;
     this.sendWSMessage = config.sendWSMessage;
     this.sendAudioChunk = config.sendAudioChunk;
+
     this.breaker = new CircuitBreaker();
   }
 
   async initialize(): Promise<void> {
-    // Seed generic questions on startup
     await this.breaker.seedGenericQuestions();
 
-    // Register turn complete callback
+    if (typeof this.stt.onInterimTranscript === 'function') {
+      this.stt.onInterimTranscript((interimText: string) => {
+        this.sendWSMessage({
+          type: 'transcript_interim',
+          text: interimText,
+          timestamp: new Date().toISOString(),
+        });
+      });
+    }
+
     this.stt.onTurnComplete(async (transcript: string) => {
       logger.info({ sessionId: this.sessionId, text: transcript }, 'Orchestrator: STT turn complete received');
-      this.sendWSMessage({
-        type: 'transcript_final',
-        text: transcript,
-        timestamp: new Date().toISOString(),
-      });
       await this.handleUserUtterance(transcript);
     });
 
-    // Start streaming session
-    try {
-      await this.stt.startSession(this.sessionId);
-    } catch (error: any) {
-      logger.error({ sessionId: this.sessionId, error }, 'Orchestrator: STT stream initialization failure');
-      this.sendWSMessage({
-        type: 'error',
-        code: 'STT_ERROR',
-        message: error.message || String(error),
-        timestamp: new Date().toISOString(),
-      });
-    }
+    await this.stt.startSession(this.sessionId);
   }
 
-  handleAudioChunk(chunk: Buffer): void {
-    this.stt.sendAudio(chunk);
-  }
-
-  async handleUserUtterance(transcript: string): Promise<void> {
-    if (this.isProcessing) {
-      logger.warn({ sessionId: this.sessionId }, 'Orchestrator: Input rate limited (processing active turn)');
-      return;
-    }
-
-    this.isProcessing = true;
-    this.speechEndTime = Date.now();
-    
+  async triggerInitialGreeting(): Promise<void> {
     try {
-      // 1. Write-Ahead: Write User Turn to Redis first!
-      const userTurnId = `trn_${Math.random().toString(36).substring(2, 11)}`;
-      const userTurn: Turn = {
-        id: userTurnId,
-        sessionId: this.sessionId,
-        turnIndex: this.turnIndex++,
-        role: 'user',
-        transcript,
-        latencyMs: Date.now() - this.speechEndTime,
-        createdAt: new Date().toISOString(),
-      };
-
-      await this.store.appendTurn(this.sessionId, userTurn);
-      
-      this.sendWSMessage({
-        type: 'turn_completed',
-        turn: userTurn,
-        timestamp: new Date().toISOString(),
-      });
-
-      // 2. Load context: Fetch embedding & query RAG + fetch history in parallel!
-      const role = 'Software Engineer'; // Dynamic role mapping
-      let embedding: number[] = [];
-      try {
-        embedding = await getEmbedding(transcript);
-      } catch (err) {
-        logger.error({ err, sessionId: this.sessionId }, 'Orchestrator: RAG embedding generation failed.');
+      const existingSession = await this.store.getSession(this.sessionId);
+      if (existingSession && existingSession.turns.length > 0) {
+        logger.info({ sessionId: this.sessionId }, 'Orchestrator: Session already has turns. Skipping initial greeting.');
+        return;
       }
 
-      // MANDATORY CORRECTION 4: Redis fetch and RAG search MUST use Promise.all()
-      const [session, ragChunks] = await Promise.all([
-        this.store.getSession(this.sessionId),
-        searchKnowledge(embedding, role, 2)
-      ]);
+      this.isProcessing = true;
+      this.speechEndTime = Date.now();
 
-      if (!session) {
-        throw new Error(`Orchestrator: Session ${this.sessionId} was not found in cache`);
-      }
+      // Fetch session metadata (jobTitle, jobDescription, resumeText) from DB
+      const [dbSession] = await db.select().from(sessions).where(eq(sessions.id, this.sessionId)).limit(1);
+      const jobTitle = dbSession?.jobTitle || 'Software Engineer';
 
-      // Compile rich pressure-simulated prompt context
-      const systemPrompt = `You are an elite, empathetic, and professional voice interviewer conducting a realistic mock interview for a ${role} role.
+      const systemPrompt = `You are a Senior Engineering Manager conducting a technical interview for the ${jobTitle} role.
 
-Follow these strict conversational guidelines:
-1. Speak naturally and conversationally. Avoid listicles, bullet points, or any formal markdown formatting.
-2. Ask exactly ONE follow-up question at a time. Keep your turns concise and under 3 sentences.
-3. Challenge the candidate's assumptions: if they give a generic answer, probe deeper by asking for concrete examples.
+Welcome the candidate briefly and ask them to introduce themselves and summarize their engineering background and key technical projects.
 
-${ragChunks && ragChunks.length > 0 ? `Here are some role-specific question prompts you can draw inspiration from during this turn:\n- ${ragChunks.map(m => m.question).join('\n- ')}` : ''}
-`;
+STRICT RESPONSE RULES:
+1. OUTPUT ONLY DIRECT SPOKEN DIALOGUE FOR THE CANDIDATE.
+2. NO META-THOUGHTS OR SYSTEM REASONING: Never output phrases like "We need to respond as...", "The stage is...", or "So we can say...". Start immediately with your welcome question.
+3. MAXIMUM 1 TO 2 SHORT SENTENCES (UNDER 25 WORDS TOTAL).`;
 
       const messages: ChatMessage[] = [
-        { role: 'system', content: systemPrompt },
-        ...session.turns.map((t): ChatMessage => ({
-          role: t.role,
-          content: t.transcript,
-        })),
+        { role: 'system', content: systemPrompt }
       ];
 
       this.currentAssistantTurnId = `trn_${Math.random().toString(36).substring(2, 11)}`;
       this.sentenceBuffer = '';
       this.fullResponseText = '';
 
-      // 3. Open LLM Stream utilizing Circuit Breaker completions
-      const completionResult = await this.breaker.runCompletionWithFallback(
+      await this.breaker.runCompletionWithFallback(
         messages,
         async (modelName) => {
           let responseText = '';
@@ -171,7 +139,6 @@ ${ragChunks && ragChunks.length > 0 ? `Here are some role-specific question prom
               if (/[.?!]\s*$/.test(this.sentenceBuffer)) {
                 const sentence = this.sentenceBuffer.trim();
                 this.sentenceBuffer = '';
-                
                 if (sentence) {
                   await this.processSentenceAudio(sentence);
                 }
@@ -181,6 +148,175 @@ ${ragChunks && ragChunks.length > 0 ? `Here are some role-specific question prom
             onError: (err: Error) => { throw err; },
             model: modelName !== 'default' ? modelName : undefined
           });
+
+          // Flush any remaining un-punctuated trailing sentence buffer
+          if (this.sentenceBuffer.trim()) {
+            const remaining = this.sentenceBuffer.trim();
+            this.sentenceBuffer = '';
+            await this.processSentenceAudio(remaining);
+          }
+
+          return responseText;
+        },
+        this.sessionId,
+        this.userId
+      );
+
+      this.isProcessing = false;
+    } catch (error) {
+      logger.error({ sessionId: this.sessionId, error }, 'Orchestrator: Initial greeting generation failed');
+      this.isProcessing = false;
+    }
+  }
+
+  handleAudioChunk(chunk: Buffer): void {
+    this.stt.sendAudio(chunk);
+  }
+
+  flushCurrentTurn(): void {
+    if (this.stt && typeof (this.stt as any).flushTurn === 'function') {
+      (this.stt as any).flushTurn();
+    }
+  }
+
+  async handleUserUtterance(transcript: string): Promise<void> {
+    if (this.isProcessing) {
+      logger.warn({ sessionId: this.sessionId }, 'Orchestrator: Input rate limited (processing active turn)');
+      return;
+    }
+
+    this.isProcessing = true;
+    this.speechEndTime = Date.now();
+
+    try {
+      // 1. Write-Ahead: Write User Turn to Redis first!
+      const userTurnId = `trn_${Math.random().toString(36).substring(2, 11)}`;
+      const userTurn: Turn = {
+        id: userTurnId,
+        sessionId: this.sessionId,
+        turnIndex: this.turnIndex++,
+        role: 'user',
+        transcript,
+        latencyMs: 0,
+        createdAt: new Date().toISOString(),
+      };
+
+      await this.store.appendTurn(this.sessionId, userTurn);
+
+      // Emit turn_completed for user to render in UI stream immediately
+      this.sendWSMessage({
+        type: 'turn_completed',
+        turn: userTurn,
+        timestamp: new Date().toISOString(),
+      });
+
+      // 2. Fetch DB session to extract candidate job title, resume, and JD
+      const [session, dbSessionResults] = await Promise.all([
+        this.store.getSession(this.sessionId),
+        db.select().from(sessions).where(eq(sessions.id, this.sessionId)).limit(1),
+      ]);
+
+      if (!session) {
+        throw new Error(`Orchestrator: Session ${this.sessionId} was not found in cache`);
+      }
+
+      const dbSession = dbSessionResults?.[0];
+      const jobTitle = dbSession?.jobTitle || 'Software Engineer';
+      const jobDescription = (dbSession?.jobDescription || 'Standard engineering requirements').slice(0, 2500);
+      const resumeText = (dbSession?.resumeText || 'Standard candidate background').slice(0, 3000);
+
+      // Generate RAG embedding on user transcript + jobTitle and search pgvector knowledge base
+      let embedding: number[] = [];
+      let ragChunks: any[] = [];
+      try {
+        const queryText = `${transcript} ${jobTitle} ${resumeText.slice(0, 500)}`;
+        embedding = await getEmbedding(queryText);
+        if (embedding && embedding.length > 0) {
+          ragChunks = await searchKnowledge(embedding, jobTitle, 3);
+          if (ragChunks.length === 0 && jobTitle !== 'Software Engineer') {
+            ragChunks = await searchKnowledge(embedding, 'Software Engineer', 3);
+          }
+        }
+      } catch (err) {
+        logger.error({ err, sessionId: this.sessionId }, 'Orchestrator: RAG embedding generation or search failed.');
+      }
+
+      const ragContextText = ragChunks.length > 0
+        ? ragChunks.map((c, i) => `[RAG Insight ${i + 1}]: Technical Focus: ${c.question} | Ideal Keywords: ${c.idealKeywords}`).join('\n')
+        : 'Focus on evaluating candidate core technical stack, database design, and network protocols.';
+
+      const currentStageNum = Math.min(5, Math.ceil(this.turnIndex / 2) || 1);
+      const stageDirectives: Record<number, string> = {
+        1: 'Goal: Ask candidate to summarize their primary project architecture and backend tech stack.',
+        2: 'Goal: Focus on DBMS & Storage (ask about indexing, ACID transactions, PostgreSQL/MongoDB, or data consistency).',
+        3: 'Goal: Focus on Computer Networks (ask about TCP handshake, HTTP/2, WebSockets, or TLS).',
+        4: 'Goal: Focus on OS & OOPs (ask about Event Loop, Threads vs Processes, Mutex, or SOLID principles).',
+        5: 'Goal: Focus on System Scalability (ask about Redis caching, load balancers, or read replicas).',
+      };
+
+      const systemPrompt = `You are an interviewer asking a candidate questions for the ${jobTitle} role.
+
+${stageDirectives[currentStageNum]}
+
+Candidate Details:
+${resumeText}
+
+Technical Guidelines:
+${ragContextText}
+
+Rules:
+- Speak directly to the candidate.
+- Ask exactly ONE clear technical question (1-2 sentences total, max 25 words).
+- Do NOT repeat instructions, goals, or candidate descriptions.
+- Output ONLY the spoken question.`;
+
+      const recentTurns = session.turns.slice(-6);
+
+      const messages: ChatMessage[] = [
+        { role: 'system', content: systemPrompt },
+        ...recentTurns.map((t): ChatMessage => ({
+          role: t.role,
+          content: t.transcript,
+        })),
+      ];
+
+      this.currentAssistantTurnId = `trn_${Math.random().toString(36).substring(2, 11)}`;
+      this.sentenceBuffer = '';
+      this.fullResponseText = '';
+
+      const completionResult = await this.breaker.runCompletionWithFallback(
+        messages,
+        async (modelName) => {
+          let responseText = '';
+          this.sentenceBuffer = '';
+          this.fullResponseText = '';
+
+          await this.llm.streamCompletion(messages, {
+            onToken: async (token: string) => {
+              responseText += token;
+              this.sentenceBuffer += token;
+              this.fullResponseText += token;
+
+              if (/[.?!]\s*$/.test(this.sentenceBuffer)) {
+                const sentence = this.sentenceBuffer.trim();
+                this.sentenceBuffer = '';
+                if (sentence) {
+                  await this.processSentenceAudio(sentence);
+                }
+              }
+            },
+            onComplete: () => {},
+            onError: (err: Error) => { throw err; },
+            model: modelName !== 'default' ? modelName : undefined
+          });
+
+          // Flush any remaining un-punctuated trailing sentence buffer
+          if (this.sentenceBuffer.trim()) {
+            const remaining = this.sentenceBuffer.trim();
+            this.sentenceBuffer = '';
+            await this.processSentenceAudio(remaining);
+          }
+
           return responseText;
         },
         this.sessionId,
@@ -209,8 +345,13 @@ ${ragChunks && ragChunks.length > 0 ? `Here are some role-specific question prom
 
   private async processSentenceAudio(sentence: string): Promise<void> {
     try {
+      const cleanSentence = cleanMetaThoughtPreamble(sentence);
+      if (!cleanSentence) return;
+
       // 1. Synthesize audio buffer
-      const audioBuffer = await this.tts.synthesize(sentence);
+      const audioBuffer = await this.tts.synthesize(cleanSentence);
+
+      const cleanFullText = cleanMetaThoughtPreamble(this.fullResponseText);
 
       // 2. Write-Ahead: Update current assistant turn state in Redis BEFORE transmitting audio!
       const assistantTurn: Turn = {
@@ -218,14 +359,21 @@ ${ragChunks && ragChunks.length > 0 ? `Here are some role-specific question prom
         sessionId: this.sessionId,
         turnIndex: this.turnIndex,
         role: 'assistant',
-        transcript: this.fullResponseText,
+        transcript: cleanFullText,
         latencyMs: Date.now() - this.speechEndTime,
         createdAt: new Date().toISOString(),
       };
 
       await this.store.appendTurn(this.sessionId, assistantTurn);
 
-      // 3. Audio transmission
+      // 3. Emit turn_completed event so AI responses appear in live transcript!
+      this.sendWSMessage({
+        type: 'turn_completed',
+        turn: assistantTurn,
+        timestamp: new Date().toISOString(),
+      });
+
+      // 4. Audio transmission
       this.sendAudioChunk(audioBuffer);
 
     } catch (error) {
@@ -238,41 +386,45 @@ ${ragChunks && ragChunks.length > 0 ? `Here are some role-specific question prom
     logger.info({ sessionId: this.sessionId }, 'Orchestrator: STT adapters terminated');
 
     try {
-      // 1. Flush turns from Redis cache to permanent Postgres DB
       const session = await this.store.getSession(this.sessionId);
       if (session && session.turns.length > 0) {
         logger.info({ sessionId: this.sessionId, count: session.turns.length }, 'Orchestrator: Flushing turns to permanent Postgres DB');
         
-        for (const t of session.turns) {
-          await db.insert(turns).values({
-            id: t.id,
-            sessionId: this.sessionId,
-            turnIndex: t.turnIndex,
-            role: t.role,
-            transcript: t.transcript,
-            latencyMs: t.latencyMs,
-            createdAt: new Date(t.createdAt),
-          }).onConflictDoNothing();
+        await db.transaction(async (tx) => {
+          for (const t of session.turns) {
+            await tx.insert(turns).values({
+              id: t.id,
+              sessionId: t.sessionId,
+              turnIndex: t.turnIndex,
+              role: t.role,
+              transcript: t.transcript,
+              latencyMs: t.latencyMs || 0,
+              createdAt: t.createdAt ? new Date(t.createdAt) : new Date(),
+            }).onConflictDoNothing();
+          }
+
+          await tx.update(sessions)
+            .set({ status: 'completed', updatedAt: new Date() })
+            .where(eq(sessions.id, this.sessionId));
+        });
+
+        if (this.tripRefundActive) {
+          await this.breaker.triggerCreditRefund(
+            this.sessionId,
+            this.userId,
+            'CircuitBreaker tripped during session. Interview degraded to static cached generic questions.'
+          );
+        } else {
+          await enqueueEvaluation(this.sessionId, this.userId);
+          logger.info({ sessionId: this.sessionId }, 'Orchestrator: Evaluation job enqueued successfully.');
         }
 
-        // Update session status to completed
-        await db.update(sessions)
-          .set({ status: 'completed', updatedAt: new Date() })
-          .where(eq(sessions.id, this.sessionId));
-
-        // 2. Enqueue Evaluation background job
-        await enqueueEvaluation(this.sessionId, this.userId);
-        logger.info({ sessionId: this.sessionId }, 'Orchestrator: Evaluation job enqueued successfully.');
-      }
-
-      // 3. Level 4 Fallback: trigger refund if interview degraded to static questions
-      if (this.tripRefundActive) {
-        await this.breaker.triggerCreditRefund(this.sessionId, this.userId, 'LLM_COMPLETIONS_DEGRADED');
+        await this.store.deleteSession(this.sessionId);
       }
     } catch (err) {
-      logger.error({ err, sessionId: this.sessionId }, 'Orchestrator: Failed to finalize session during cleanup');
-    } finally {
-      await this.breaker.close();
+      logger.error({ err, sessionId: this.sessionId }, 'Orchestrator: Cleanup and database flush error');
     }
+
+    await this.breaker.close();
   }
 }

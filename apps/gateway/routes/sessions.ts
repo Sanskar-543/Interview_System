@@ -27,12 +27,17 @@ router.post('/', async (req, res: Response, next: NextFunction) => {
       throw new AppError('PLAN_LIMIT_EXCEEDED', 'Upgrade to start more sessions', 403);
     }
 
+    const { jobTitle, jobDescription, resumeText, audioMode } = req.body || {};
     const sessionId = `sess_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
 
     const [session] = await db.insert(sessions).values({
       id: sessionId,
       userId,
       status: 'active',
+      jobTitle: jobTitle || 'Software Engineer',
+      jobDescription: jobDescription || null,
+      resumeText: resumeText || null,
+      audioMode: audioMode === 'push_to_talk' ? 'push_to_talk' : 'hands_free',
     }).returning();
 
     // Increment user session count
@@ -41,6 +46,48 @@ router.post('/', async (req, res: Response, next: NextFunction) => {
       .where(eq(users.id, userId));
 
     res.status(201).json({ session });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/v1/sessions/parse-pdf — parse PDF resume base64 into clean text
+router.post('/parse-pdf', async (req, res: Response, next: NextFunction) => {
+  try {
+    const { pdfBase64 } = req.body || {};
+    if (!pdfBase64 || typeof pdfBase64 !== 'string') {
+      throw new AppError('INVALID_INPUT', 'Base64 encoded PDF data is required', 400);
+    }
+
+    // Strip data URL prefix if present (e.g. data:application/pdf;base64,...)
+    const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
+    const buffer = Buffer.from(cleanBase64, 'base64');
+
+    const { PDFParse } = require('pdf-parse');
+    const parser = new PDFParse({ data: buffer });
+    const parsedResult = await parser.getText();
+
+    let rawText = parsedResult?.text || '';
+    if (!rawText && parsedResult?.pages) {
+      rawText = parsedResult.pages.map((p: any) => p.text || '').join('\n');
+    }
+
+    // Clean text: strip page number footers, repetitive whitespace
+    const cleanText = rawText
+      .replace(/--\s*\d+\s*of\s*\d+\s*--/gi, '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    if (!cleanText || cleanText.length < 15) {
+      throw new AppError('PDF_PARSING_FAILED', 'Could not extract text from PDF document. Please paste resume text directly.', 422);
+    }
+
+    res.json({
+      text: cleanText,
+      characterCount: cleanText.length,
+      wordCount: cleanText.split(/\s+/).filter(Boolean).length,
+    });
   } catch (err) {
     next(err);
   }

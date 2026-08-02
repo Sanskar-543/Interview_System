@@ -40,13 +40,13 @@ COPY --from=builder --chown=nodejs:nodejs /prod/app ./
 
 USER nodejs
 
-EXPOSE 3001
+EXPOSE 5001
 
-# Healthcheck for Voice Service (TCP socket check on port 3001)
+# Healthcheck for Voice Service (TCP socket check on port 5001)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD node -e "const c = require('net').createConnection(3001, 'localhost', () => { c.end(); process.exit(0); }); c.on('error', () => process.exit(1));"
+  CMD node -e "const c = require('net').createConnection(5001, '127.0.0.1', () => { c.end(); process.exit(0); }); c.on('error', () => process.exit(1));"
 
-ENV PORT=3001
+ENV PORT=5001
 ENV NODE_ENV=production
 
 CMD ["node", "dist/server.js"]

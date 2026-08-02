@@ -138,10 +138,13 @@ export class CircuitBreaker {
     sessionId: string,
     userId: string
   ): Promise<{ response: string; usedFallback: boolean; tripRefund: boolean }> {
+    // Multi-stage fallback chain sorted by live real-world latency & zero rate-limit stability
     const backupModels = [
-      'google/gemini-2.5-flash',
-      'meta-llama/llama-3-8b-instruct:free',
-      'mistralai/mistral-7b-instruct:free'
+      'qwen/qwen-2.5-72b-instruct',
+      'openai/gpt-4o-mini',
+      'meta-llama/llama-3.3-70b-instruct',
+      'deepseek/deepseek-chat',
+      'mistralai/mistral-small-24b-instruct-2501'
     ];
 
     for (let i = 0; i < backupModels.length; i++) {

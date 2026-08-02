@@ -31,9 +31,10 @@ export class OpenRouterLLMAdapter implements LLMProvider {
           'X-Title': 'AI Interviewer SaaS',
         },
         body: JSON.stringify({
-          model: config.model || 'meta-llama/llama-3-8b-instruct:free', // Dynamic model parameter for backup rotation
+          model: config.model && config.model !== 'default' ? config.model : 'qwen/qwen-2.5-72b-instruct',
           messages,
           stream: true,
+          max_tokens: 60,
         }),
       });
 

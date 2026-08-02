@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { env, logger } from '@ai-interviewer/shared';
 import { SessionStore } from './session/store';
-import { DeepgramSTTAdapter } from './providers/stt';
+import { DeepgramSTTAdapter, MockSTTAdapter } from './providers/stt';
 import { OpenRouterLLMAdapter } from './providers/llm';
 import { DeepgramTTSAdapter } from './providers/tts';
 import { TurnOrchestrator } from './handlers/turn';
@@ -26,8 +26,13 @@ wss.on('connection', async (ws: WebSocket) => {
           orchestrator.handleAudioChunk(data as Buffer);
         }
       } else {
-        const parsed = JSON.parse(data.toString()) as WSMessage;
+        const parsed = JSON.parse(data.toString()) as any;
         logger.info({ type: parsed.type }, 'VoiceService: Received text control command');
+
+        if (parsed.type === 'submit_turn' && orchestrator) {
+          logger.info({ sessionId: activeSessionId }, 'VoiceService: Candidate explicitly clicked Send Answer');
+          orchestrator.flushCurrentTurn();
+        }
 
         if (parsed.type === 'session_start') {
           const sessionId = parsed.sessionId || `sess_${Math.random().toString(36).substring(2, 11)}`;
@@ -39,7 +44,9 @@ wss.on('connection', async (ws: WebSocket) => {
             session = await store.createSession(sessionId, userId);
           }
 
-          const stt = new DeepgramSTTAdapter();
+          const stt = (!env.DEEPGRAM_API_KEY || env.DEEPGRAM_API_KEY.startsWith('mock'))
+            ? new MockSTTAdapter()
+            : new DeepgramSTTAdapter();
           const llm = new OpenRouterLLMAdapter();
           const tts = new DeepgramTTSAdapter();
 
@@ -71,6 +78,11 @@ wss.on('connection', async (ws: WebSocket) => {
           }));
 
           logger.info({ sessionId }, 'VoiceService: Session orchestrator successfully initialized');
+
+          // Trigger AI interviewer opening question automatically
+          orchestrator.triggerInitialGreeting().catch((err) => {
+            logger.error({ err, sessionId }, 'VoiceService: Initial greeting failed');
+          });
         }
       }
     } catch (err) {

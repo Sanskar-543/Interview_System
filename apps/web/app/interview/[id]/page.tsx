@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { useVoice } from '../../../../hooks/useVoice';
+import { useVoice } from '../../../hooks/useVoice';
 import { Turn } from '@ai-interviewer/shared';
 import {
   Mic,
@@ -44,13 +44,22 @@ export default function InterviewRoomPage() {
     disconnect,
     startRecording,
     stopRecording,
+    submitTurn,
   } = useVoice({
     gatewayUrl: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:5000',
     sessionId,
     onTranscriptInterim: (text) => setInterimTranscript(text),
     onTranscriptFinal: () => setInterimTranscript(''),
     onTurnCompleted: (turn) => {
-      setTurns((prev) => [...prev, turn]);
+      setTurns((prev) => {
+        const existingIdx = prev.findIndex((t) => t.id === turn.id);
+        if (existingIdx !== -1) {
+          const updated = [...prev];
+          updated[existingIdx] = turn;
+          return updated;
+        }
+        return [...prev, turn];
+      });
       if (turn.role === 'assistant') {
         setLatencyMs(turn.latencyMs);
       }
@@ -81,7 +90,7 @@ export default function InterviewRoomPage() {
     return () => {
       disconnect();
     };
-  }, [sessionId, connect, disconnect, router]);
+  }, [sessionId]); // Run connect on initial mount only
 
   // Auto-scroll transcript drawer to bottom
   useEffect(() => {
@@ -95,9 +104,36 @@ export default function InterviewRoomPage() {
     setTimeout(() => setErrorMsg(null), 6000);
   };
 
+  const [sessionInfo, setSessionInfo] = useState<{ jobTitle?: string; audioMode?: string } | null>(null);
+
+  // Fetch session metadata (jobTitle, audioMode)
+  useEffect(() => {
+    const fetchSession = async () => {
+      const token = getToken();
+      if (!token || !sessionId) return;
+      try {
+        const res = await fetch(`${API_URL}/api/v1/sessions/${sessionId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.session) {
+            setSessionInfo({
+              jobTitle: data.session.jobTitle,
+              audioMode: data.session.audioMode,
+            });
+          }
+        }
+      } catch (e) {
+        // Fallback
+      }
+    };
+    fetchSession();
+  }, [sessionId]);
+
   const toggleRecording = () => {
     if (isRecording) {
-      stopRecording();
+      submitTurn();
     } else {
       startRecording();
     }
@@ -138,20 +174,22 @@ export default function InterviewRoomPage() {
 
   // State text mapping
   const getStatusMessage = () => {
-    switch (status) {
-      case 'connecting':
-        return 'Connecting to AI Interviewer...';
-      case 'listening':
-        return isRecording ? 'Listening to your response...' : 'Microphone ready — Speak when ready';
-      case 'processing':
-        return 'AI is evaluating your answer...';
-      case 'speaking':
-        return 'AI Interviewer speaking...';
-      case 'error':
-        return 'Connection interrupted. Retrying...';
-      default:
-        return 'Session Active';
+    if (status === 'speaking') {
+      return 'AI Interviewer speaking...';
     }
+    if (status === 'processing') {
+      return 'AI is evaluating your answer...';
+    }
+    if (isRecording) {
+      return 'Listening to your response...';
+    }
+    if (isConnected) {
+      return 'Microphone ready — Speak or click to answer';
+    }
+    if (status === 'connecting') {
+      return 'Connecting to AI Interviewer...';
+    }
+    return 'Connection interrupted. Click Reconnect above.';
   };
 
   return (
@@ -165,8 +203,20 @@ export default function InterviewRoomPage() {
           </button>
           <div style={styles.roomBadge}>
             <Sparkles size={14} color="#8B5CF6" />
-            <span style={styles.roomTitle}>AI Senior Technical Interview</span>
+            <span style={styles.roomTitle}>{sessionInfo?.jobTitle ? `${sessionInfo.jobTitle} Mock Interview` : 'AI Senior Technical Interview'}</span>
           </div>
+          {sessionInfo?.audioMode && (
+            <div
+              style={{
+                ...styles.audioModeBadge,
+                backgroundColor: sessionInfo.audioMode === 'push_to_talk' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(139, 92, 246, 0.15)',
+                borderColor: sessionInfo.audioMode === 'push_to_talk' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(139, 92, 246, 0.3)',
+                color: sessionInfo.audioMode === 'push_to_talk' ? '#FBBF24' : '#C4B5FD',
+              }}
+            >
+              <span>{sessionInfo.audioMode === 'push_to_talk' ? '🔊 Push-to-Talk (Device Speakers)' : '🎧 Hands-Free (Earphones)'}</span>
+            </div>
+          )}
         </div>
 
         <div style={styles.headerRight}>
@@ -175,7 +225,7 @@ export default function InterviewRoomPage() {
             <span style={styles.timerText}>⏱️ {formatTimer(secondsElapsed)}</span>
           </div>
 
-          {/* Connection Status Dot */}
+          {/* Connection Status Dot & Reconnect Button */}
           <div style={styles.connectionBadge}>
             <span
               style={{
@@ -185,8 +235,28 @@ export default function InterviewRoomPage() {
               }}
             />
             <span style={styles.connectionText}>
-              {isConnected ? 'CONNECTED' : status === 'connecting' ? 'RECONNECTING' : 'OFFLINE'}
+              {isConnected ? 'CONNECTED' : status === 'connecting' ? 'CONNECTING...' : 'DISCONNECTED'}
             </span>
+
+            {!isConnected && status !== 'connecting' && (
+              <button
+                id="reconnect-voice-btn"
+                onClick={() => connect()}
+                style={{
+                  backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  borderRadius: '0.375rem',
+                  padding: '0.25rem 0.5rem',
+                  color: '#FCA5A5',
+                  fontSize: '0.6875rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  marginLeft: '0.5rem',
+                }}
+              >
+                🔄 Reconnect
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -293,20 +363,36 @@ export default function InterviewRoomPage() {
       {/* 4. BOTTOM FLOATING CONTROL BAR (ZOOM/MEET STYLE) */}
       <footer style={styles.bottomControlBar}>
         <div style={styles.controlPill}>
-          {/* Mic Toggle Button */}
-          <button
-            onClick={toggleRecording}
-            disabled={!isConnected}
-            style={{
-              ...styles.controlBtn,
-              backgroundColor: isRecording ? 'rgba(255, 255, 255, 0.08)' : '#EF4444',
-              color: isRecording ? '#F3F4F6' : '#FFFFFF',
-              borderColor: isRecording ? 'rgba(255, 255, 255, 0.15)' : '#DC2626',
-            }}
-            title={isRecording ? 'Mute Microphone' : 'Unmute Microphone'}
-          >
-            {isRecording ? <Mic size={20} /> : <MicOff size={20} />}
-          </button>
+          
+          {/* Push-to-Talk prominent Record/Send Pill or Standard Mic Toggle */}
+          {sessionInfo?.audioMode === 'push_to_talk' ? (
+            <button
+              onClick={toggleRecording}
+              disabled={!isConnected}
+              style={{
+                ...styles.pushToTalkBtn,
+                backgroundColor: isRecording ? '#EF4444' : '#F59E0B',
+                boxShadow: isRecording ? '0 0 20px rgba(239, 68, 68, 0.6)' : '0 0 20px rgba(245, 158, 11, 0.4)',
+              }}
+            >
+              {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
+              <span>{isRecording ? '📤 Click to Send Answer' : '🎙️ Click to Record Answer'}</span>
+            </button>
+          ) : (
+            <button
+              onClick={toggleRecording}
+              disabled={!isConnected}
+              style={{
+                ...styles.controlBtn,
+                backgroundColor: isRecording ? 'rgba(255, 255, 255, 0.08)' : '#EF4444',
+                color: isRecording ? '#F3F4F6' : '#FFFFFF',
+                borderColor: isRecording ? 'rgba(255, 255, 255, 0.15)' : '#DC2626',
+              }}
+              title={isRecording ? 'Mute Microphone' : 'Unmute Microphone'}
+            >
+              {isRecording ? <Mic size={20} /> : <MicOff size={20} />}
+            </button>
+          )}
 
           {/* Toggle Transcript Panel Button */}
           <button
@@ -454,6 +540,29 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
+  },
+  audioModeBadge: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.375rem',
+    fontSize: '0.75rem',
+    fontWeight: 700,
+    padding: '0.25rem 0.625rem',
+    borderRadius: '9999px',
+    border: '1px solid',
+  },
+  pushToTalkBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    border: 'none',
+    borderRadius: '9999px',
+    padding: '0.625rem 1.25rem',
+    color: 'white',
+    fontSize: '0.875rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
   },
   roomTitle: {
     fontSize: '0.9375rem',
